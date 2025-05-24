@@ -1,0 +1,35 @@
+name: Build
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.10", "3.11", "3.12"]
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python ${{ matrix.python-version }}
+        run: uv python install ${{ matrix.python-version }}
+
+      - name: Install build dependencies
+        run: |
+          uv venv
+          uv pip install -e .[dev] build pdoc
+
+      - name: Build package
+        run: |
+          uv run python -m build
+
+      - name: Build documentation
+        run: |
+          uv run pdoc src/torchcurves -o docs
