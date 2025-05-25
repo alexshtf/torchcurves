@@ -102,23 +102,14 @@ class BSplineFunction(torch.autograd.Function):
         """
         n_control_points, dim = control_points.shape
 
-        # Calculate indices of control points to use for each batch item
-        # For each u[b] (in span s[b]), we need CP_{s[b]-degree}, ..., CP_{s[b]}
-        # basis[b,i] corresponds to N_{s[b]-degree+i, degree}, which multiplies CP_{s[b]-degree+i}
-        # cp_indices_batch[b, i] = spans[b] - degree + i
         degrees_range = torch.arange(degree + 1, device=spans.device).unsqueeze(0)  # Shape (1, degree+1)
         control_point_indices = spans.unsqueeze(1) - degree + degrees_range  # Shape (batch_size, degree+1)
-
-        # Clamp indices to be valid for control_points tensor
-        control_point_indices = torch.clamp(control_point_indices, 0, n_control_points - 1)
 
         # Gather control points: gathered_control_points[b, i, d] = control_points[control_point_indices[b,i], d]
         gathered_control_points = control_points[control_point_indices]  # Shape (batch_size, degree+1, dim)
 
         # Compute points: points[b,d] = sum_i basis[b,i] * gathered_control_points[b,i,d]
-        points = (basis.unsqueeze(2) * gathered_control_points).sum(dim=1)
-
-        return points
+        return (basis.unsqueeze(2) * gathered_control_points).sum(dim=1)
 
     @staticmethod
     def basis_derivative_coefficients(
@@ -236,29 +227,24 @@ class BSplineFunction(torch.autograd.Function):
         # grad_u[b] = sum_d grad_output[b,d] * d_points_du[b,d]
         grad_u = (grad_output * d_points_du).sum(dim=1)  # Shape (batch_size,)
 
-        # Gradient with respect to control points
-        grad_control_points = torch.zeros_like(control_points)
-
         # update_values[b,i,d] = grad_output[b,d] * basis_funcs[b,i]
         update_values = grad_output.unsqueeze(1) * basis_funcs.unsqueeze(2)
-        # Shape: (batch_size, 1, dim) * (batch_size, degree+1, 1) -> (batch_size, degree+1, dim)
 
         # Flatten for scatter_add_
-        # update_values_flat has shape (batch_size*(degree+1), dim)
-        # indices_flat has shape (batch_size*(degree+1))
         update_values_flat = update_values.reshape(-1, dim)
         indices_flat = clamped_cp_indices.reshape(-1)
 
         # Expand indices_flat for scatter_add_ to match dim of update_values_flat
-        # indices_flat_expanded shape (batch_size*(degree+1), dim)
         indices_flat_expanded = indices_flat.unsqueeze(1).expand_as(update_values_flat)
 
+        # Compute gradient with respect to control points
+        grad_control_points = torch.zeros_like(control_points)
         grad_control_points.scatter_add_(0, indices_flat_expanded, update_values_flat)
 
         return grad_u, grad_control_points, None, None
 
 
-class BSplineCurve(nn.Module):
+class BSplineCurveBase(nn.Module):
     """PyTorch module for parametrized B-spline curves.
 
     The learnable parameters are the control points of the curve.
@@ -309,7 +295,7 @@ class BSplineCurve(nn.Module):
         nn.init.xavier_uniform_(self.control_points)
 
         if isinstance(knots_config, int):
-            knot_buffer = self._generate_clamped_knot_vector(
+            knot_buffer = self._uniform_augmented_knots(
                 self.n_control_points, self.degree, dtype=self.control_points.dtype
             )
         else:  # knots_config is a torch.Tensor
@@ -318,7 +304,7 @@ class BSplineCurve(nn.Module):
         self.register_buffer("knots", knot_buffer)
 
     @staticmethod
-    def _generate_clamped_knot_vector(n_control_points: int, degree: int, dtype=torch.float32) -> torch.Tensor:
+    def _uniform_augmented_knots(n_control_points: int, degree: int, dtype=torch.float32) -> torch.Tensor:
         num_knots = n_control_points + degree + 1
         knots = torch.zeros(num_knots, dtype=dtype)
 
@@ -331,8 +317,91 @@ class BSplineCurve(nn.Module):
 
         return knots
 
+    def __repr__(self):
+        return (
+            f"{self.__class__.__name__}("
+            f"n_control_points={self.n_control_points}, "
+            f"dim={self.dim}, degree={self.degree}, "
+            f"knots_shape={self.knots.shape if hasattr(self, 'knots') else None})"
+        )
+
+
+class BSplineEmbeddings(BSplineCurveBase):
+    """PyTorch module for Legendre embeddings (learnable control points, no input grad).
+
+    Example:
+    >>> from torch import nn
+    >>> from torchcurves import BSplineEmbeddings
+    >>> from torch.optim import SGD
+
+    >>> net = nn.Sequential(
+    ...     BSplineEmbeddings(dim=3, degree=3, knots_config=10), # must be the first layer - no backprop support!
+    ...     nn.Linear(3, 2),
+    ...     nn.ReLU(),
+    ...     nn.Linear(2, 1)
+    ... )
+
+    >>> optim = SGD(net.parameters(), lr=0.01)
+    >>> u = torch.tensor([0.5, 0.1, 0.3])
+    >>> output = net(u)  # Forward pass through the B-spline curve
+    >>> loss = output.sum()
+
+    >>> # Backpropagation
+    >>> optim.zero_grad()
+    >>> loss.backward()
+    >>> optim.step()
+
+    """
+
     def forward(self, u: torch.Tensor) -> torch.Tensor:
-        """Evaluate the B-spline curve for a batch of parameter values u.
+        """PyTorch module for B-spline embeddings. Learnable control points, no backpropagation through the curve.
+
+        Args:
+            u (torch.Tensor): A 1D tensor of parameter values, shape (batch_size,).
+                              Each value in u should be in the range [0, 1].
+
+        Returns:
+            torch.Tensor: Points on the B-spline curve, shape (batch_size, dim).
+
+        """
+        if u.ndim != 1:
+            raise ValueError("Input u must be a 1D tensor (batch_size,).")
+
+        u = torch.clamp(u, 0.0, 1.0)
+        spans = BSplineFunction.find_spans(u, self.knots, self.degree, self.n_control_points)
+        basis_funcs = BSplineFunction.cox_de_boor(u, self.knots, spans, self.degree)
+        points = BSplineFunction.evaluate_curve(basis_funcs, self.control_points, spans, self.degree)
+        return points
+
+
+class BSplineCurve(BSplineCurveBase):
+    """PyTorch module for a B-Spline curve. Learnable control points, and backpropagation through the curve.
+
+    Example:
+        >>> from torch import nn
+        >>> from torchcurves import BSplineCurve
+        >>> from torch.optim import SGD
+
+        >>> net = nn.Sequential(
+        ...     nn.Linear(2, 1),
+        ...     BSplineCurve(dim=3, degree=3, knots_config=10),
+        ...     nn.Linear(3, 1)
+        ... )
+
+        >>> optim = SGD(net.parameters(), lr=0.01)
+        >>> u = torch.tensor([[0.5, 1], [1, 2], [2, 3]])
+        >>> output = net(u)  # Forward pass through the B-spline curve
+        >>> loss = output.sum()
+
+        >>> # Backpropagation
+        >>> optim.zero_grad()
+        >>> loss.backward()
+        >>> optim.step()
+
+    """
+
+    def forward(self, u: torch.Tensor) -> torch.Tensor:
+        """Evaluate the B-Spline curve at the given parameter values.
 
         Args:
             u (torch.Tensor): A 1D tensor of parameter values, shape (batch_size,).
@@ -351,12 +420,4 @@ class BSplineCurve(nn.Module):
             self.control_points,
             self.knots,  # type: ignore[arg-type] # self.knots is a Tensor buffer
             self.degree,
-        )
-
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}("
-            f"n_control_points={self.n_control_points}, "
-            f"dim={self.dim}, degree={self.degree}, "
-            f"knots_shape={self.knots.shape if hasattr(self, 'knots') else None})"
         )
