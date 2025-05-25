@@ -6,7 +6,7 @@ import torch.nn.functional as F  # noqa: N812
 
 
 class BSplineFunction(torch.autograd.Function):
-    ZERO_TOLERANCE = 1e-8
+    ZERO_TOLERANCE = 1e-12
     ONE_TOLERANCE = 1.0 - ZERO_TOLERANCE
 
     """Custom autograd function for B-spline evaluation and differentiation (Vectorized)."""
@@ -25,16 +25,9 @@ class BSplineFunction(torch.autograd.Function):
             Span indices, shape (batch_size,). Each span_idx `s` means u falls in [knots[s], knots[s+1]).
 
         """
-        # Find s such that knots[s] <= u < knots[s+1]
-        # torch.searchsorted returns idx such that knots[idx-1] <= u < knots[idx] (if side='right')
         spans = torch.searchsorted(knots, u, side="right") - 1
-
-        # Handle boundary conditions for clamped splines precisely
         spans[u < BSplineFunction.ZERO_TOLERANCE] = degree
         spans[u >= BSplineFunction.ONE_TOLERANCE] = n_control_points
-
-        # Clamp to ensure spans are within the valid range [degree, n_control_points - 1]
-        # This is crucial if u values are slightly outside [0, 1] or knots are not perfectly standard.
         spans = torch.clamp(spans, min=degree, max=n_control_points - 1)
         return spans
 
@@ -113,17 +106,17 @@ class BSplineFunction(torch.autograd.Function):
         # For each u[b] (in span s[b]), we need CP_{s[b]-degree}, ..., CP_{s[b]}
         # basis[b,i] corresponds to N_{s[b]-degree+i, degree}, which multiplies CP_{s[b]-degree+i}
         # cp_indices_batch[b, i] = spans[b] - degree + i
-        i_range = torch.arange(degree + 1, device=spans.device).unsqueeze(0)  # Shape (1, degree+1)
-        cp_indices_batch = spans.unsqueeze(1) - degree + i_range  # Shape (batch_size, degree+1)
+        degrees_range = torch.arange(degree + 1, device=spans.device).unsqueeze(0)  # Shape (1, degree+1)
+        control_point_indices = spans.unsqueeze(1) - degree + degrees_range  # Shape (batch_size, degree+1)
 
         # Clamp indices to be valid for control_points tensor
-        clamped_cp_indices = torch.clamp(cp_indices_batch, 0, n_control_points - 1)
+        control_point_indices = torch.clamp(control_point_indices, 0, n_control_points - 1)
 
-        # Gather control points: gathered_cps[b, i, d] = control_points[clamped_cp_indices[b,i], d]
-        gathered_cps = control_points[clamped_cp_indices]  # Shape (batch_size, degree+1, dim)
+        # Gather control points: gathered_control_points[b, i, d] = control_points[control_point_indices[b,i], d]
+        gathered_control_points = control_points[control_point_indices]  # Shape (batch_size, degree+1, dim)
 
-        # Compute points: points[b,d] = sum_i basis[b,i] * gathered_cps[b,i,d]
-        points = (basis.unsqueeze(2) * gathered_cps).sum(dim=1)
+        # Compute points: points[b,d] = sum_i basis[b,i] * gathered_control_points[b,i,d]
+        points = (basis.unsqueeze(2) * gathered_control_points).sum(dim=1)
 
         return points
 
@@ -147,35 +140,28 @@ class BSplineFunction(torch.autograd.Function):
 
         """
         batch_size = spans.shape[0]
-        i_range = torch.arange(degree + 1, device=spans.device).unsqueeze(0)  # (1, degree+1)
+        degrees_range = torch.arange(degree + 1, device=spans.device).unsqueeze(0)
 
         # knot_idx_k_batch[b,i] = spans[b] - degree + i (this is 'k' in B'_{k,p})
-        knot_idx_k_batch = spans.unsqueeze(1) - degree + i_range  # (batch_size, degree+1)
-
-        # Clamp indices for safety, though for valid spans and degree they should be in bounds.
-        m = knots.shape[0]
-        clamped_k = knot_idx_k_batch.clamp(0, m - 1)
-        clamped_k_plus_p = (knot_idx_k_batch + degree).clamp(0, m - 1)
-        clamped_k_plus_1 = (knot_idx_k_batch + 1).clamp(0, m - 1)
-        clamped_k_plus_p_plus_1 = (knot_idx_k_batch + degree + 1).clamp(0, m - 1)
+        knots_idx = spans.unsqueeze(1) - degree + degrees_range  # (batch_size, degree+1)
 
         # Gather knot values
-        knots_k = knots[clamped_k]
-        knots_k_plus_p = knots[clamped_k_plus_p]
-        knots_k_plus_1 = knots[clamped_k_plus_1]
-        knots_k_plus_p_plus_1 = knots[clamped_k_plus_p_plus_1]
+        knots_k = knots[knots_idx]
+        knots_k_plus_deg = knots[knots_idx + degree]
+        knots_k_plus_1 = knots[knots_idx + 1]
+        knots_k_plus_deg_plus_1 = knots[knots_idx + degree + 1]
 
         alpha_coeffs_batch = torch.zeros(batch_size, degree + 1, device=spans.device, dtype=knots.dtype)
         beta_coeffs_batch = torch.zeros(batch_size, degree + 1, device=spans.device, dtype=knots.dtype)
 
         # Alpha: p / (knots[k+p] - knots[k])
-        denom_alpha = knots_k_plus_p - knots_k
-        mask_alpha = torch.abs(denom_alpha) > 1e-12
+        denom_alpha = knots_k_plus_deg - knots_k
+        mask_alpha = torch.abs(denom_alpha) > BSplineFunction.ZERO_TOLERANCE
         alpha_coeffs_batch[mask_alpha] = degree / denom_alpha[mask_alpha]
 
         # Beta: p / (knots[k+p+1] - knots[k+1])
-        denom_beta = knots_k_plus_p_plus_1 - knots_k_plus_1
-        mask_beta = torch.abs(denom_beta) > 1e-12
+        denom_beta = knots_k_plus_deg_plus_1 - knots_k_plus_1
+        mask_beta = torch.abs(denom_beta) > BSplineFunction.ZERO_TOLERANCE
         beta_coeffs_batch[mask_beta] = degree / denom_beta[mask_beta]
 
         return alpha_coeffs_batch, beta_coeffs_batch
