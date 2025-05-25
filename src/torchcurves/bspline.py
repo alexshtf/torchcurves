@@ -1,8 +1,10 @@
-from typing import Tuple, Union
+from typing import Literal, Tuple, Union
 
 import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
+
+from ._normalization import normalizations
 
 
 class BSplineFunction(torch.autograd.Function):
@@ -100,8 +102,6 @@ class BSplineFunction(torch.autograd.Function):
             Points on curve, shape (batch_size, dim).
 
         """
-        n_control_points, dim = control_points.shape
-
         degrees_range = torch.arange(degree + 1, device=spans.device).unsqueeze(0)  # Shape (1, degree+1)
         control_point_indices = spans.unsqueeze(1) - degree + degrees_range  # Shape (batch_size, degree+1)
 
@@ -245,7 +245,7 @@ class BSplineFunction(torch.autograd.Function):
 
 
 class BSplineCurveBase(nn.Module):
-    """PyTorch module for parametrized B-spline curves.
+    r"""PyTorch module for parametrized B-spline curves.
 
     The learnable parameters are the control points of the curve.
     The input parameter `u` to the forward method is always expected to be in the range [0, 1].
@@ -260,10 +260,26 @@ class BSplineCurveBase(nn.Module):
             If a torch.Tensor, it explicitly specifies the knot values. The number
             of control points will be inferred from the knot vector and degree.
             The provided tensor should be a 1D tensor of knot values.
+        normalization (Literal["clamp", "rational"]):
+            Normalization method for the inputs, that are not necessarily in [0, 1]. (default: "clamp")
+            Available options:
+            - clamp: Clamps the input to the range [0, 1].
+            - rational: Uses a rational normalization method
+                :math:`x_{\mathrm{norm}} = \frac{x}{\sqrt{\mathrm{scale}^2 + x^2}}`
+        normalization_scale (float):
+            Scale factor for the rational normalization method (default: 1.0). The input is divided by the scale
+            before applying the normalization.
 
     """
 
-    def __init__(self, dim: int, degree: int = 3, knots_config: Union[int, torch.Tensor] = 10):
+    def __init__(
+        self,
+        dim: int,
+        degree: int = 3,
+        knots_config: Union[int, torch.Tensor] = 10,
+        normalization: Literal["clamp", "rational"] = "clamp",
+        normalization_scale: float = 1.0,
+    ):
         super().__init__()
 
         if not isinstance(dim, int) or dim <= 0:
@@ -273,6 +289,8 @@ class BSplineCurveBase(nn.Module):
 
         self.dim = dim
         self.degree = degree
+        self.normalization = normalization
+        self.normalization_scale = normalization_scale
 
         if isinstance(knots_config, int):
             n_control_points = knots_config
@@ -367,7 +385,7 @@ class BSplineEmbeddings(BSplineCurveBase):
         if u.ndim != 1:
             raise ValueError("Input u must be a 1D tensor (batch_size,).")
 
-        u = torch.clamp(u, 0.0, 1.0)
+        u = normalizations[self.normalization](u, self.normalization_scale)
         spans = BSplineFunction.find_spans(u, self.knots, self.degree, self.n_control_points)
         basis_funcs = BSplineFunction.cox_de_boor(u, self.knots, spans, self.degree)
         points = BSplineFunction.evaluate_curve(basis_funcs, self.control_points, spans, self.degree)
@@ -414,9 +432,9 @@ class BSplineCurve(BSplineCurveBase):
         if u.ndim != 1:
             raise ValueError("Input u must be a 1D tensor (batch_size,).")
 
-        u_clamped = torch.clamp(u, 0.0, 1.0)
+        u = normalizations[self.normalization](u, self.normalization_scale)
         return BSplineFunction.apply(
-            u_clamped,
+            u,
             self.control_points,
             self.knots,  # type: ignore[arg-type] # self.knots is a Tensor buffer
             self.degree,
