@@ -34,40 +34,46 @@ def Net(nn.Module):
 ```
 
 # Use case 2 - Kolmogorov-Arnold networks
+A KAN based on the B-Spline basis, along the lines of the original paper:
 ```python
 import torchcurves as tc
 from torch import nn
 
-num_sums = 20
-num_terms_in_sum = 30
+input_dim = 2
+intermediate_dim = 5
+knots = 10
 
-# a KAN based on B-Splines
-num_knots = 10
 spline_kan = nn.Sequential([
     # layer 1
-    tc.BSplineCurve(num_sums * num_terms_in_sum),
-    nn.Unflatten(1, num_sums, num_terms_in_sum),
-    tc.Sum(2),
+    tc.Replicate(input_dim, tc.BSplineCurve, intermediate_dim, knots),
+    tc.Sum()
     # layer 2
-    tc.BSplineCurve(num_sums * num_terms_in_sum)
-    nn.Unflatten(1, num_sums, num_terms_in_sum),
-    tc.Sum(2),
-    ...
+    tc.Replicate(intermediate_dim, tc.BSplineCurve, intermediate_dim, knots),
+    tc.Sum()
+    # layer 3
+    tc.Replicate(intermediate_dim, tc.BSplineCurve, 1, knots),
+    tc.Sum()
 ])
+```
+A KAN based on Legendre polynomials:
+```python
+import torchcurves as tc
+from torch import nn
 
-# KAN based on Legendre polynomials
+input_dim = 2
+intermediate_dim = 5
 degree = 10
-num_knots = 10
+
 legendre_kan = nn.Sequential([
     # layer 1
-    tc.LegendreCurve(num_sums * num_terms_in_sum),
-    nn.Unflatten(1, num_sums, num_terms_in_sum),
-    tc.Sum(2),
+    tc.Replicate(input_dim, tc.LegendreCurve, intermediate_dim, degree)
+    tc.Sum(),
     # layer 2
-    tc.LegendreCurve(num_sums * num_terms_in_sum)
-    nn.Unflatten(1, num_sums, num_terms_in_sum),
-    tc.Sum(2),
-    ...
+    tc.Replicate(intermediate_dim, tc.LegendreCurve, intermediate_dim, degree)
+    tc.Sum(),
+    # layer 3
+    tc.Replicate(intermediate_dim, tc.LegendreCurve, 1, degree)
+    tc.Sum(),
 ])
 ```
 
