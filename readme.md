@@ -77,10 +77,54 @@ legendre_kan = nn.Sequential([
 ])
 ```
 
-## Development
+# Advanced features
+The curves we provide here typically rely on their inputs to lie in a compact interval, typically [-1, 1]. So arbitrary
+inputs need to be normalized to this interval. We provide two simple out-of-the-box normalizations stragies described
+below.
+
+## Clamping
+This is the default strategy - the inputs are simply clipped to [-1, 1] after scaling, i.e.
+```math
+x \to \max(\min(1, x / s), -1)
+```
+In Python it looks like this:
+```python
+tc.BSplineCurve(curve_dim, normalization_fn='clamp', normalization_scale=s)
+```
+
+## Rational scaling
+This strategy computes
+```math
+x \to \frac{x}{\sqrt{s^2 + x^2}},
+```
+and is based on the paper
+>Wang, Z.Q. and Guo, B.Y., 2004. Modified Legendre rational spectral method for the whole line. Journal of Computational Mathematics, pp.457-474.
+
+In Python it looks like this:
+```python
+tc.BSplineCurve(curve_dim, normalization_fn='rational', normalization_scale=s)
+```
+
+## Example
+A KAN based on rationally-scaled B-Spline basis with the default scale of $s=1$:
+```python
+spline_kan = nn.Sequential([
+    # layer 1
+    tc.Replicate(input_dim, tc.BSplineCurve, intermediate_dim, knots, normalization_fn='rational'),
+    tc.Sum()
+    # layer 2
+    tc.Replicate(intermediate_dim, tc.BSplineCurve, intermediate_dim, knots, normalization_fn='rational'),
+    tc.Sum()
+    # layer 3
+    tc.Replicate(intermediate_dim, tc.BSplineCurve, 1, knots, normalization_fn='rational'),
+    tc.Sum()
+])
+```
+
+# Development
 
 
-### Development Installation
+## Development Installation
 
 Using [uv](https://github.com/astral-sh/uv) (recommended):
 
@@ -94,7 +138,7 @@ uv venv
 uv pip install -e ".[dev]"
 ```
 
-### Running Tests
+## Running Tests
 
 ```bash
 # Run all tests
@@ -107,7 +151,7 @@ pytest --cov=torchcurves
 pytest tests/test_bspline.py -v
 ```
 
-## Citation
+# Citation
 
 If you use this package in your research, please cite:
 
