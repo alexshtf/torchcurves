@@ -4,7 +4,8 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-from ._normalization import normalizations
+from ._normalization import normalization_catalogue
+from .types import NormalizationFn, TensorLike
 
 
 class BSplineFunction(torch.autograd.Function):
@@ -34,7 +35,7 @@ class BSplineFunction(torch.autograd.Function):
         return spans
 
     @staticmethod
-    def cox_de_boor(u: torch.Tensor, knots: torch.Tensor, spans: torch.Tensor, degree: int) -> torch.Tensor:
+    def cox_de_boor(u: TensorLike, knots: torch.Tensor, spans: torch.Tensor, degree: int) -> torch.Tensor:
         """Compute B-spline basis functions using Cox-de Boor recursion. Algorithm A2.2 from Piegl & Tiller.
 
         Args:
@@ -248,24 +249,26 @@ class BSplineCurveBase(nn.Module):
     r"""PyTorch module for parametrized B-spline curves.
 
     The learnable parameters are the control points of the curve.
-    The input parameter `u` to the forward method is always expected to be in the range [0, 1].
+    The input parameter `u` to the forward method is normalized to the range [-1, 1] using the specified normalization
+    strategy.
 
     Args:
         dim (int): Dimension of the curve (output dimension of points).
         degree (int): Degree of the B-spline (default: 3).
         knots_config (Union[int, torch.Tensor]):
-            If an int, it specifies the number of control points. A clamped knot
+            If an int, it specifies the number of control points. A uniformly-spaced knot
             vector will be automatically generated (using uniformly spaced internal knots),
             ensuring the curve interpolates the first and last control points.
             If a torch.Tensor, it explicitly specifies the knot values. The number
             of control points will be inferred from the knot vector and degree.
             The provided tensor should be a 1D tensor of knot values.
-        normalization (Literal["clamp", "rational"]):
-            Normalization method for the inputs, that are not necessarily in [0, 1]. (default: "clamp")
+        normalize_fn (Literal["clamp", "rational"] | NormalizationFn):
+            Normalization method for the inputs, that are not necessarily in [-1, 1]. (default: "clamp")
             Available options:
-            - clamp: Clamps the input to the range [0, 1].
+            - clamp: Clamps the scaled input to the range [-1, 1].
             - rational: Uses a rational normalization method
                 :math:`x_{\mathrm{norm}} = \frac{x}{\sqrt{\mathrm{scale}^2 + x^2}}`
+            - A function accepting a tensor and a scale, and returning a tensor
         normalization_scale (float):
             Scale factor for the rational normalization method (default: 1.0). The input is divided by the scale
             before applying the normalization.
@@ -277,7 +280,7 @@ class BSplineCurveBase(nn.Module):
         dim: int,
         degree: int = 3,
         knots_config: Union[int, torch.Tensor] = 10,
-        normalization: Literal["clamp", "rational"] = "clamp",
+        normalize_fn: Literal["clamp", "rational"] | NormalizationFn = "clamp",
         normalization_scale: float = 1.0,
     ):
         super().__init__()
@@ -289,8 +292,16 @@ class BSplineCurveBase(nn.Module):
 
         self.dim = dim
         self.degree = degree
-        self.normalization = normalization
+        if isinstance(normalize_fn, str):
+            self.normalize_fn = normalization_catalogue.get(normalize_fn)
+            if self.normalize_fn is None:
+                raise ValueError(f"Unknown normalization {normalize_fn}")
+        else:
+            self.normalize_fn = normalize_fn
+
         self.normalization_scale = normalization_scale
+        if self.normalization_scale <= 0:
+            raise ValueError(f"Normalization scale must be positive, but {normalization_scale} was given.")
 
         if isinstance(knots_config, int):
             n_control_points = knots_config
@@ -323,17 +334,10 @@ class BSplineCurveBase(nn.Module):
 
     @staticmethod
     def _uniform_augmented_knots(n_control_points: int, degree: int, dtype=torch.float32) -> torch.Tensor:
-        num_knots = n_control_points + degree + 1
-        knots = torch.zeros(num_knots, dtype=dtype)
-
-        knots[n_control_points:] = 1.0
-
-        num_inner_knots = n_control_points - degree - 1
-        if num_inner_knots > 0:
-            inner_knots = torch.linspace(0, 1, n_control_points - degree + 1, dtype=dtype)
-            knots[degree + 1 : n_control_points] = inner_knots[1:-1]
-
-        return knots
+        head = torch.full((degree,), -1, dtype=dtype)
+        mid = torch.linspace(-1, 1, n_control_points - degree + 1, dtype=dtype)
+        tail = torch.full((degree,), 1, dtype=dtype)
+        return torch.concat([head, mid, tail])
 
     def __repr__(self):
         return (
@@ -342,6 +346,31 @@ class BSplineCurveBase(nn.Module):
             f"dim={self.dim}, degree={self.degree}, "
             f"knots_shape={self.knots.shape if hasattr(self, 'knots') else None})"
         )
+
+    def _prepare_arg(self, u: torch.Tensor) -> Tuple[torch.Size, torch.Tensor]:
+        u = self.normalize_fn(u, self.normalization_scale)
+        dim_shape = torch.Size([self.dim])
+        if u.ndim == 0:
+            return dim_shape, u.reshape(1)
+        else:
+            return u.shape + dim_shape, u.ravel()
+
+    def forward(self, u: torch.Tensor):
+        """PyTorch module for B-spline embeddings. Learnable control points, no backpropagation through the curve.
+
+        Args:
+            u (torch.Tensor): A tensor of parameter values, shape (N1, N2, ...).
+
+        Returns:
+            torch.Tensor: Points on the B-spline curve, shape (N1, N2, ..., dim).
+
+        """
+        out_shape, u = self._prepare_arg(u)
+        result = self._forward_core(self.normalize_fn(u))
+        return result.reshape(out_shape)
+
+    def _forward_core(self, u):
+        raise NotImplementedError("This method should be implemented in derived classes")
 
 
 class BSplineEmbeddings(BSplineCurveBase):
@@ -371,21 +400,7 @@ class BSplineEmbeddings(BSplineCurveBase):
 
     """
 
-    def forward(self, u: torch.Tensor) -> torch.Tensor:
-        """PyTorch module for B-spline embeddings. Learnable control points, no backpropagation through the curve.
-
-        Args:
-            u (torch.Tensor): A 1D tensor of parameter values, shape (batch_size,).
-                              Each value in u should be in the range [0, 1].
-
-        Returns:
-            torch.Tensor: Points on the B-spline curve, shape (batch_size, dim).
-
-        """
-        if u.ndim != 1:
-            raise ValueError("Input u must be a 1D tensor (batch_size,).")
-
-        u = normalizations[self.normalization](u, self.normalization_scale)
+    def _forward_core(self, u: torch.Tensor) -> torch.Tensor:
         spans = BSplineFunction.find_spans(u, self.knots, self.degree, self.n_control_points)
         basis_funcs = BSplineFunction.cox_de_boor(u, self.knots, spans, self.degree)
         points = BSplineFunction.evaluate_curve(basis_funcs, self.control_points, spans, self.degree)
@@ -396,43 +411,29 @@ class BSplineCurve(BSplineCurveBase):
     """PyTorch module for a B-Spline curve. Learnable control points, and backpropagation through the curve.
 
     Example:
-        >>> from torch import nn
-        >>> from torchcurves import BSplineCurve
-        >>> from torch.optim import SGD
+    >>> from torch import nn
+    >>> from torchcurves import BSplineCurve
+    >>> from torch.optim import SGD
 
-        >>> net = nn.Sequential(
-        ...     nn.Linear(2, 1),
-        ...     BSplineCurve(dim=3, degree=3, knots_config=10),
-        ...     nn.Linear(3, 1)
-        ... )
+    >>> net = nn.Sequential(
+    ...     nn.Linear(2, 1),
+    ...     BSplineCurve(dim=3, degree=3, knots_config=10),
+    ...     nn.Linear(3, 1)
+    ... )
 
-        >>> optim = SGD(net.parameters(), lr=0.01)
-        >>> u = torch.tensor([[0.5, 1], [1, 2], [2, 3]])
-        >>> output = net(u)  # Forward pass through the B-spline curve
-        >>> loss = output.sum()
+    >>> optim = SGD(net.parameters(), lr=0.01)
+    >>> u = torch.tensor([[0.5, 1], [1, 2], [2, 3]])
+    >>> output = net(u)  # Forward pass through the B-spline curve
+    >>> loss = output.sum()
 
-        >>> # Backpropagation
-        >>> optim.zero_grad()
-        >>> loss.backward()
-        >>> optim.step()
+    >>> # Backpropagation
+    >>> optim.zero_grad()
+    >>> loss.backward()
+    >>> optim.step()
 
     """
 
-    def forward(self, u: torch.Tensor) -> torch.Tensor:
-        """Evaluate the B-Spline curve at the given parameter values.
-
-        Args:
-            u (torch.Tensor): A 1D tensor of parameter values, shape (batch_size,).
-                              Each value in u should be in the range [0, 1].
-
-        Returns:
-            torch.Tensor: Points on the B-spline curve, shape (batch_size, dim).
-
-        """
-        if u.ndim != 1:
-            raise ValueError("Input u must be a 1D tensor (batch_size,).")
-
-        u = normalizations[self.normalization](u, self.normalization_scale)
+    def _forward_core(self, u: torch.Tensor) -> torch.Tensor:
         return BSplineFunction.apply(
             u,
             self.control_points,

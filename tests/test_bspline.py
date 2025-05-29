@@ -350,7 +350,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         self.assertEqual(module.knots.dtype, self.default_dtype)
         self.assertEqual(module.control_points.dtype, self.default_dtype)
         # Check if knots are clamped
-        self.assertTrue(torch.all(module.knots[: degree + 1] == 0.0))
+        self.assertTrue(torch.all(module.knots[: degree + 1] == -1.0))
         self.assertTrue(torch.all(module.knots[n_cps:] == 1.0))
 
     def test_init_with_tensor(self):
@@ -409,7 +409,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         n_cps = 5
         module = BSplineCurve(dim=dim, degree=degree, knots_config=n_cps).to(self.device).to(self.default_dtype)
 
-        u_start = torch.tensor([0.0], device=self.device, dtype=self.default_dtype)
+        u_start = torch.tensor([-1.0], device=self.device, dtype=self.default_dtype)
         u_end = torch.tensor([1.0], device=self.device, dtype=self.default_dtype)
 
         point_start = module(u_start)

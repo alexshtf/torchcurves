@@ -1,7 +1,10 @@
-from typing import Tuple
+from typing import Literal, Tuple
 
 import torch
 import torch.nn as nn
+
+from ._normalization import normalization_catalogue
+from .types import NormalizationFn
 
 
 class LegendreCurveFunction(torch.autograd.Function):
@@ -121,7 +124,7 @@ class LegendreCurveFunction(torch.autograd.Function):
 
 
 class LegendreCurve(nn.Module):
-    """PyTorch module for parametrized curves using Legendre polynomial basis.
+    r"""PyTorch module for parametrized curves using Legendre polynomial basis.
 
     The learnable parameters are the control points (coefficients) of the Legendre series.
     The input parameter `u` to the forward method is always expected to be in the range [-1, 1].
@@ -131,10 +134,26 @@ class LegendreCurve(nn.Module):
         dim (int): Dimension of the curve (output dimension of points).
         degree (int): Degree of the Legendre polynomial basis.
                       The number of control points will be `degree + 1`.
+        normalize_fn (Literal["clamp", "rational"] | NormalizationFn):
+            Normalization method for the inputs, that are not necessarily in [-1, 1]. (default: "clamp")
+            Available options:
+            - clamp: Clamps the input to the range [-1, 1].
+            - rational: Uses a rational normalization method
+                :math:`x_{\mathrm{norm}} = \frac{x}{\sqrt{\mathrm{scale}^2 + x^2}}`
+            - A function accepting a tensor and a scale, and returning a tensor
+        normalization_scale (float):
+            Scale factor for the rational normalization method (default: 1.0). The input is divided by the scale
+            before applying the normalization.
 
     """
 
-    def __init__(self, dim: int, degree: int):
+    def __init__(
+        self,
+        dim: int,
+        degree: int,
+        normalize_fn: Literal["clamp", "rational"] | NormalizationFn = "clamp",
+        normalization_scale=1.0,
+    ):
         super().__init__()
 
         if not isinstance(dim, int) or dim <= 0:
@@ -144,10 +163,21 @@ class LegendreCurve(nn.Module):
 
         self.dim = dim
         self.degree = degree
-        self.n_control_points = self.degree + 1
+        self.n_coefficients = self.degree + 1
 
-        self.control_points = nn.Parameter(torch.empty(self.n_control_points, self.dim))
-        nn.init.xavier_uniform_(self.control_points)
+        if isinstance(normalize_fn, str):
+            self.normalize_fn = normalization_catalogue.get(normalize_fn)
+            if self.normalize_fn is None:
+                raise ValueError(f"Unknown normalization {normalize_fn}")
+        else:
+            self.normalize_fn = normalize_fn
+
+        self.normalization_scale = normalization_scale
+        if self.normalization_scale <= 0:
+            raise ValueError(f"Normalization scale must be positive, but {normalization_scale} was given.")
+
+        self.coefficients = nn.Parameter(torch.empty(self.n_coefficients, self.dim))
+        nn.init.xavier_uniform_(self.coefficients)
 
     def forward(self, u: torch.Tensor) -> torch.Tensor:
         """Evaluate the Legendre curve for a batch of parameter values u.
@@ -163,73 +193,13 @@ class LegendreCurve(nn.Module):
         if u.ndim != 1:
             raise ValueError("Input u must be a 1D tensor (batch_size,).")
 
-        # Clamp u to [-1, 1] as this is the direct input for Legendre polynomials
-        u_clamped = torch.clamp(u, -1.0, 1.0)
-
         return LegendreCurveFunction.apply(
-            u_clamped,
-            self.control_points,
+            self.normalize_fn(u, self.normalization_scale),
+            self.coefficients,
             self.degree,
         )
 
     def __repr__(self):
         return (
-            f"{self.__class__.__name__}(dim={self.dim}, degree={self.degree}, n_control_points={self.n_control_points})"
-        )
-
-
-class LegendreRationalCurve(nn.Module):
-    """PyTorch module for parametrized curves using Legendre Rational function basis.
-
-    The learnable parameters are the control points (coefficients) of the series.
-    The input parameter `x` to the forward method can be any real number.
-    This `x` is mapped to `y = x / sqrt(1 + x^2)`, which is in [-1, 1].
-    The curve is C(x) = sum_{k=0}^{degree} CP_k * P_k(y).
-
-    Args:
-        dim (int): Dimension of the curve (output dimension of points).
-        degree (int): Degree of the Legendre polynomial basis.
-                      The number of control points will be `degree + 1`.
-
-    """
-
-    def __init__(self, dim: int, degree: int):
-        super().__init__()
-
-        if not isinstance(dim, int) or dim <= 0:
-            raise ValueError("dim must be a positive integer.")
-        if not isinstance(degree, int) or degree < 0:
-            raise ValueError("degree must be a non-negative integer.")
-
-        self.dim = dim
-        self.degree = degree
-        self.n_control_points = self.degree + 1
-
-        self.control_points = nn.Parameter(torch.empty(self.n_control_points, self.dim))
-        nn.init.xavier_uniform_(self.control_points)
-
-    def forward(self, x: torch.Tensor) -> torch.Tensor:
-        """Evaluate the Legendre Rational curve for a batch of parameter values x.
-
-        Args:
-            x (torch.Tensor): A 1D tensor of parameter values, shape (batch_size,).
-                              Values can be any real number.
-
-        Returns:
-            torch.Tensor: Points on the Legendre Rational curve, shape (batch_size, dim).
-
-        """
-        if x.ndim != 1:
-            raise ValueError("Input x must be a 1D tensor (batch_size,).")
-
-        y = x / torch.sqrt(1 + x.square())
-        return LegendreCurveFunction.apply(
-            y,
-            self.control_points,
-            self.degree,
-        )
-
-    def __repr__(self):
-        return (
-            f"{self.__class__.__name__}(dim={self.dim}, degree={self.degree}, n_control_points={self.n_control_points})"
+            f"{self.__class__.__name__}(dim={self.dim}, degree={self.degree}, n_control_points={self.n_coefficients})"
         )
