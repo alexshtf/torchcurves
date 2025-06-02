@@ -404,25 +404,19 @@ class BSplineCurveBase(nn.Module):
 
     @staticmethod
     def _uniform_augmented_knots(n_control_points: int, degree: int, dtype=torch.float32) -> torch.Tensor:
-        # Generates knots in [-1, 1]
-        # head = torch.full((degree,), -1.0, dtype=dtype) # Incorrect: should be degree+1 repeated knots
-        # tail = torch.full((degree,), 1.0, dtype=dtype) # Incorrect
+        if n_control_points < 1 + degree:
+            raise ValueError("Not enough control points for the given degree to form internal knots.")
 
-        # Correct clamping: first p+1 knots are k_min, last p+1 knots are k_max
+        # Generates knots in [-1, 1]
         k_min, k_max = -1.0, 1.0  # Target range for normalized u
 
         head_knots = torch.full((degree + 1,), k_min, dtype=dtype)
         tail_knots = torch.full((degree + 1,), k_max, dtype=dtype)
 
-        num_internal_knots = n_control_points - degree - 1  # Number of distinct internal knots
-        if num_internal_knots < 0:  # Should be caught by n_control_points > degree check
-            raise ValueError("Not enough control points for the given degree to form internal knots.")
-
-        if num_internal_knots == 0:  # e.g. n_cp = deg + 1
+        num_internal_knots = n_control_points - degree - 1
+        if num_internal_knots == 0:
             internal_knots = torch.empty(0, dtype=dtype)
         else:
-            # n_control_points - degree + 1 segments in [k_min, k_max]
-            # These are the values for knots[degree+1] through knots[n_control_points-1]
             internal_knots = torch.linspace(k_min, k_max, num_internal_knots + 2, dtype=dtype)[1:-1]
 
         return torch.cat([head_knots, internal_knots, tail_knots])
@@ -437,14 +431,7 @@ class BSplineCurveBase(nn.Module):
         )
 
     def _prepare_arg(self, u: torch.Tensor) -> Tuple[torch.Size, torch.Tensor]:
-        # u is expected to be (N, M) where M is self.num_curves
-        # Normalization function maps to the knot range [self._knot_min, self._knot_max]
-        # which is typically [-1, 1] by default.
-        u_normalized = self.normalize_fn(u, self.normalization_scale, out_min=self._knot_min, out_max=self._knot_max)
-
-        # Output shape of points will be (N, M, self.dim)
-        out_shape = u_normalized.shape + (self.dim,)
-        return out_shape, u_normalized
+        return self.normalize_fn(u, self.normalization_scale, out_min=self._knot_min, out_max=self._knot_max)
 
     def forward(self, u: torch.Tensor):
         """Evaluate a batch of B-spline curves.
@@ -463,29 +450,12 @@ class BSplineCurveBase(nn.Module):
                 f"Input u must be a 2D tensor of shape (N, num_curves={self.num_curves}). Got shape: {u.shape}"
             )
 
-        # _prepare_arg normalizes u to the knot range (e.g. [-1,1])
-        # and determines the final output shape of points.
-        # u_prepared will have shape (N, num_curves)
-        out_shape, u_prepared = self._prepare_arg(u)
-
-        # _forward_core expects u_prepared (N, num_curves) and uses self.control_points (num_curves, C, D)
-        # It should return points of shape (N, num_curves, D)
-        result = self._forward_core(u_prepared)
-
-        # Ensure result matches expected out_shape, typically no reshape needed if _forward_core is correct.
-        if result.shape != out_shape:
-            # This might happen if _forward_core or BSplineFunction.apply doesn't return (N,M,D)
-            # For now, let's assume it's correct. If issues, a reshape might be a temporary fix:
-            # result = result.reshape(out_shape)
-            pass  # Assuming result is already (N, M, D)
-
-        return result
+        u_prepared = self._prepare_arg(u)
+        return self._forward_core(u_prepared)
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
         # u_prepared has shape (N, M)
         # self.control_points has shape (M, C, D)
-        # self.knots is 1D, shared
-        # self.degree is int
         # Should return tensor of shape (N, M, D)
         raise NotImplementedError("This method should be implemented in derived classes")
 
@@ -498,17 +468,11 @@ class BSplineEmbeddings(BSplineCurveBase):
     """
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
-        # u_prepared shape: (N, M)
-        # self.control_points shape: (M, C, D)
-        # self.knots shape: (K,)
-        # self.degree: int
-        # self.n_control_points_per_curve: C
         spans = BSplineFunction.find_spans(
             u_prepared, self.knots, self.degree, self.n_control_points_per_curve
         )  # (N,M)
         basis_funcs = BSplineFunction.cox_de_boor(u_prepared, self.knots, spans, self.degree)  # (N,M,deg+1)
-        points = BSplineFunction.evaluate_curve(basis_funcs, self.control_points, spans, self.degree)  # (N,M,D)
-        return points
+        return BSplineFunction.evaluate_curve(basis_funcs, self.control_points, spans, self.degree)  # (N,M,D)
 
 
 class BSplineCurve(BSplineCurveBase):
@@ -518,13 +482,9 @@ class BSplineCurve(BSplineCurveBase):
     """
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
-        # u_prepared shape: (N, M)
-        # self.control_points shape: (M, C, D)
-        # self.knots shape: (K,) - Type hint for apply might complain, but it's a tensor buffer
-        # self.degree: int
         return BSplineFunction.apply(
             u_prepared,
             self.control_points,
             self.knots,  # type: ignore[arg-type]
             self.degree,
-        )  # Returns (N,M,D)
+        )  # (N,M,D)
