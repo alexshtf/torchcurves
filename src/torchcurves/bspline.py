@@ -520,19 +520,50 @@ def bspline_curves(
     )
 
 
+def bspline_embeddings(
+    u: torch.Tensor, control_points: torch.Tensor, knots: Optional[torch.Tensor] = None, degree: int = 3
+):
+    r"""Evaluate multiple B-Spline curves, each with its own control points, sharing the same knots and degree.
+
+    This function allow back-propagating only through the control points and the argument. Useful as the input layer
+    in a neural network, whose arguments come from a data-set that requires no back-prop, while allowing a cheaper
+    computation for this usecase than `bspline_curves`.
+
+    Args:
+        u (torch.Tensor): A tensor of size B x C of values between `knots.min()` and `knots.max()`, representing
+            a mini-batch of B arguments for sampling each of the C curves.
+        control_points (torch.Tensor): A tensor of size C x M x D, representing C tontrol points of M curves
+            embedded in D-dimensional space.
+        knots (torch.Tensor, optional): A 1D tensor of size M + degree + 1 representing the spline function's knot
+            vector. `None` means uniformly-spaced knots between -1 and 1 with the not-a-knot boundary
+            conditions. (defult: `None`)
+        degree (int): The degree of the B-Spline function. (default: 3, meaning a cubic spline)
+
+    Returns:
+        A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
+        D-dimensional space.
+
+    """
+    n_control_points = control_points.shape[1]
+    if knots is None:
+        knots = uniform_augmented_knots(n_control_points, degree)
+
+    spans = BSplineFunction.find_spans(u, knots, degree, n_control_points)  # (N,M)
+    basis_funcs = BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,deg+1)
+    return BSplineFunction.evaluate_curve(basis_funcs, control_points, spans, degree)  # (N,M,D)
+
+
 class BSplineEmbeddings(BSplineCurveBase):
-    """PyTorch module for B-spline embeddings (batch of m curves).
+    """PyTorch module for B-spline embeddings (batch of m curves, no backprop to the input).
 
     Learnable control points, no backpropagation through the curve parameter `u`.
-    This means gradients are not computed for `u`.
+    This means gradients are not computed for `u`. This module is useful as an embedding layer in a neural network,
+    where `u` comes from a data-set, and no need to compute gradients w.r.t `u`. This facilitates a slightly faster
+    evaluation of the B-Spline curve.
     """
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
-        spans = BSplineFunction.find_spans(
-            u_prepared, self.knots, self.degree, self.n_control_points_per_curve
-        )  # (N,M)
-        basis_funcs = BSplineFunction.cox_de_boor(u_prepared, self.knots, spans, self.degree)  # (N,M,deg+1)
-        return BSplineFunction.evaluate_curve(basis_funcs, self.control_points, spans, self.degree)  # (N,M,D)
+        return bspline_embeddings(u_prepared, self.control_points, self.knots, self.degree)
 
 
 class BSplineCurve(BSplineCurveBase):
@@ -542,9 +573,4 @@ class BSplineCurve(BSplineCurveBase):
     """
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
-        return BSplineFunction.apply(
-            u_prepared,
-            self.control_points,
-            self.knots,  # type: ignore[arg-type]
-            self.degree,
-        )  # (N,M,D)
+        return bspline_curves(u_prepared, self.control_points, self.knots, self.degree)
