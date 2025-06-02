@@ -55,7 +55,10 @@ spline_kan = nn.Sequential([
     tc.Sum(dim=-2)
 ])
 ```
-A KAN based on Legendre polynomials:
+Yes, we know the original KAN paper used a different curve parametrization, B-Spline + arcsinh, but the whole point
+of this repo is showing that KAN activations can be parametrized in arbitrary ways.
+
+Here is A KAN based on Legendre polynomials:
 ```python
 import torchcurves as tc
 from torch import nn
