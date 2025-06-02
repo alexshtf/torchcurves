@@ -20,7 +20,11 @@ This package provides a fully differentiable curve implementations that integrat
 pip install torchcurves
 ```
 
-# Use case 1 - continuous embeddings
+# Use cases
+There are examples in the `example` directory showing how to build models using this library. Here we show some
+simple code snippets to appreciate the library.
+
+## Use case 1 - continuous embeddings
 ```python
 import torchcurves as tc
 from torch import nn
@@ -38,7 +42,7 @@ def Net(nn.Module):
         return self.my_super_duper_transformer(embeddings)
 ```
 
-# Use case 2 - Kolmogorov-Arnold networks
+## Use case 2 - Kolmogorov-Arnold networks
 A KAN based on the B-Spline basis, along the lines of the original paper:
 ```python
 import torchcurves as tc
