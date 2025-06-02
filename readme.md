@@ -1,4 +1,4 @@
-# torch-bspline
+# TorchCurves
 
 A PyTorch module for differentiable parametric with learnable coefficients, such as a B-Spline curve with learnable control points.
 
@@ -115,13 +115,13 @@ A KAN based on rationally-scaled B-Spline basis with the default scale of $s=1$:
 ```python
 spline_kan = nn.Sequential([
     # layer 1
-    tc.BSplineCurve(input_dim, intermediate_dim, knots, normalization_fn='rational'),
+    tc.BSplineCurve(input_dim, intermediate_dim, knot_config=knots, normalization_fn='rational'),
     tc.Sum()
     # layer 2
-    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots, normalization_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, knot_config=knots, normalization_fn='rational'),
     tc.Sum()
     # layer 3
-    tc.BSplineCurve(intermediate_dim, 1, knots, normalization_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, 1, knot_config=knots, normalization_fn='rational'),
     tc.Sum()
 ])
 ```
@@ -140,20 +140,20 @@ cd torchcurves
 
 # Create virtual environment and install
 uv venv
-uv pip install -e ".[dev]"
+uv sync --all-groups
 ```
 
 ## Running Tests
 
 ```bash
 # Run all tests
-pytest
+uv run pytest
 
 # Run with coverage
-pytest --cov=torchcurves
+uv run pytest --cov=torchcurves
 
 # Run specific test file
-pytest tests/test_bspline.py -v
+uv run pytest tests/test_bspline.py -v
 ```
 
 # Citation
@@ -163,8 +163,8 @@ If you use this package in your research, please cite:
 ```bibtex
 @software{torchcurves,
   author = {Shtoff, Alex},
-  title = {torchcurves: Differentiable B-spline Curves in PyTorch},
-  year = {2024},
+  title = {torchcurves: Differentiable Parametric Curves in PyTorch},
+  year = {2025},
   publisher = {GitHub},
   url = {https://github.com/alexshtf/torchcurves}
 }
