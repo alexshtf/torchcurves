@@ -45,14 +45,14 @@ knots = 10
 
 spline_kan = nn.Sequential([
     # layer 1
-    tc.Replicate(input_dim, tc.BSplineCurve, intermediate_dim, knots),
-    tc.Sum()
+    tc.BSplineCurve(input_dim, intermediate_dim, knots) # result shape = B x input_dim x intermediate_dim
+    tc.Sum(dim=-2) # sum over the features, the input_dim dimension
     # layer 2
-    tc.Replicate(intermediate_dim, tc.BSplineCurve, intermediate_dim, knots),
-    tc.Sum()
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots)
+    tc.Sum(dim=-2)
     # layer 3
-    tc.Replicate(intermediate_dim, tc.BSplineCurve, 1, knots),
-    tc.Sum()
+    tc.BSplineCurve(intermediate_dim, 1, knots),
+    tc.Sum(dim=-2)
 ])
 ```
 A KAN based on Legendre polynomials:
@@ -66,16 +66,18 @@ degree = 10
 
 legendre_kan = nn.Sequential([
     # layer 1
-    tc.Replicate(input_dim, tc.LegendreCurve, intermediate_dim, degree)
-    tc.Sum(),
+    tc.LegendreCurve(input_dim, intermediate_dim, knots)
+    tc.Sum(dim=-2)
     # layer 2
-    tc.Replicate(intermediate_dim, tc.LegendreCurve, intermediate_dim, degree)
-    tc.Sum(),
+    tc.LegendreCurve(intermediate_dim, intermediate_dim, knots)
+    tc.Sum(dim=-2)
     # layer 3
-    tc.Replicate(intermediate_dim, tc.LegendreCurve, 1, degree)
-    tc.Sum(),
+    tc.LegendreCurve(intermediate_dim, 1, knots),
+    tc.Sum(dim=-2)
 ])
 ```
+Since KANs are the primary use-case for the `tc.Sum()` layer, we can omit the `dim=2` argument, but it is provided
+here for clarity.
 
 # Advanced features
 The curves we provide here typically rely on their inputs to lie in a compact interval, typically [-1, 1]. So arbitrary
@@ -110,13 +112,13 @@ A KAN based on rationally-scaled B-Spline basis with the default scale of $s=1$:
 ```python
 spline_kan = nn.Sequential([
     # layer 1
-    tc.Replicate(input_dim, tc.BSplineCurve, intermediate_dim, knots, normalization_fn='rational'),
+    tc.BSplineCurve(input_dim, intermediate_dim, knots, normalization_fn='rational'),
     tc.Sum()
     # layer 2
-    tc.Replicate(intermediate_dim, tc.BSplineCurve, intermediate_dim, knots, normalization_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots, normalization_fn='rational'),
     tc.Sum()
     # layer 3
-    tc.Replicate(intermediate_dim, tc.BSplineCurve, 1, knots, normalization_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, 1, knots, normalization_fn='rational'),
     tc.Sum()
 ])
 ```
