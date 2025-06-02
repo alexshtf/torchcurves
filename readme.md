@@ -41,17 +41,18 @@ from torch import nn
 
 input_dim = 2
 intermediate_dim = 5
-knots = 10
+num_control_points = 10
 
+config = dict(knots_config=num_control_points, normalize_fn='rational')
 kan = nn.Sequential(
     # layer 1
-    tc.BSplineCurve(input_dim, intermediate_dim, knots_config=knots, normalize_fn='rational'),
+    tc.BSplineCurve(input_dim, intermediate_dim, **config),
     tc.Sum(dim=-2),
     # layer 2
-    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots_config=knots, normalize_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, **config),
     tc.Sum(dim=-2),
     # layer 3
-    tc.BSplineCurve(intermediate_dim, 1, knots_config=knots, normalize_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, 1, **config),
     tc.Sum(dim=-2),
 )
 ```
@@ -67,15 +68,16 @@ input_dim = 2
 intermediate_dim = 5
 degree = 5
 
+config = dict(degree=degree, normalize_fn='rational')
 kan = nn.Sequential(
     # layer 1
-    tc.LegendreCurve(input_dim, intermediate_dim, degree=degree, normalize_fn='rational'),
+    tc.LegendreCurve(input_dim, intermediate_dim, **config),
     tc.Sum(dim=-2),
     # layer 2
-    tc.LegendreCurve(intermediate_dim, intermediate_dim, degree=degree, normalize_fn='rational'),
+    tc.LegendreCurve(intermediate_dim, intermediate_dim, **config),
     tc.Sum(dim=-2),
     # layer 3
-    tc.LegendreCurve(intermediate_dim, 1, degree=degree, normalize_fn='rational'),
+    tc.LegendreCurve(intermediate_dim, 1, **config),
     tc.Sum(dim=-2),
 )
 ```
