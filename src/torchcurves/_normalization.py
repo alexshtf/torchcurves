@@ -24,7 +24,7 @@ def rational(x: torch.Tensor, scale: float = 1, out_min: float = -1, out_max: fl
             Journal of Computational Mathematics, pp.457-474.
 
     """
-    result = x / torch.hypot(scale, x)
+    result = x / torch.sqrt(scale**2 + x.square())
     out_scaled = ((out_max - out_min) * result + out_max + out_min) / 2
     return torch.clip(out_scaled, out_min, out_max)
 
