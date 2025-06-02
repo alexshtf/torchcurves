@@ -1,4 +1,4 @@
-from typing import Literal, Tuple, Union
+from typing import Literal, Optional, Tuple, Union
 
 import torch
 import torch.nn as nn
@@ -6,6 +6,50 @@ import torch.nn.functional as F  # noqa: N812
 
 from ._normalization import normalization_catalogue
 from .types import NormalizationFn
+
+
+def uniform_augmented_knots(
+    n_control_points: int, degree: int, dtype=torch.float32, device: Union[torch.device, str] = None
+) -> torch.Tensor:
+    """Generate an augmented knot vector with uniform spacing in [-1, 1] for B-spline curves.
+
+    This function returns a 1D tensor containing knot values. The internal knots are computed uniformly in the interval
+    [-1, 1] for the given number of control points and degree. The head and tail, each containing (degree + 1) identical
+    knots, conforming to the not-a-knot boundary conditions.
+
+    Args:
+        n_control_points (int): The total number of control points for the B-spline.
+                                Must be at least (degree + 1) to have a valid knot vector.
+        degree (int): The degree of the B-spline.
+        dtype (torch.dtype, optional): The desired data type of the output tensor.
+                                       Defaults to torch.float32.
+        device (torch.device or str): The device on which the knot vector will reside.
+
+    Returns:
+        torch.Tensor: A 1D tensor of knots consisting of head knots, uniformly spaced
+                      internal knots, and tail knots, all in the range [-1.0, 1.0].
+
+    Raises:
+        ValueError: If the number of control points is less than (degree + 1), indicating
+                    that there are not enough points to form a valid knot vector.
+
+    """
+    if n_control_points < 1 + degree:
+        raise ValueError("Not enough control points for the given degree to form internal knots.")
+
+    # Generates knots in [-1, 1]
+    k_min, k_max = -1.0, 1.0  # Target range for normalized u
+
+    head_knots = torch.full((degree + 1,), k_min, dtype=dtype, device=device)
+    tail_knots = torch.full((degree + 1,), k_max, dtype=dtype, device=device)
+
+    num_internal_knots = n_control_points - degree - 1
+    if num_internal_knots == 0:
+        internal_knots = torch.empty(0, dtype=dtype, device=device)
+    else:
+        internal_knots = torch.linspace(k_min, k_max, num_internal_knots + 2, dtype=dtype, device=device)[1:-1]
+
+    return torch.cat([head_knots, internal_knots, tail_knots])
 
 
 class BSplineFunction(torch.autograd.Function):
@@ -390,7 +434,7 @@ class BSplineCurveBase(nn.Module):
 
         if isinstance(knots_config, int):
             # Knots are shared by all m curves
-            knot_buffer = self._uniform_augmented_knots(
+            knot_buffer = uniform_augmented_knots(
                 self.n_control_points_per_curve, self.degree, dtype=self.control_points.dtype
             )
         else:  # knots_config is a torch.Tensor
@@ -401,25 +445,6 @@ class BSplineCurveBase(nn.Module):
         # Effective parameter range for B-spline is [knots[degree], knots[n_control_points_per_curve]]
         self._knot_min = self.knots[self.degree].item()
         self._knot_max = self.knots[self.n_control_points_per_curve].item()
-
-    @staticmethod
-    def _uniform_augmented_knots(n_control_points: int, degree: int, dtype=torch.float32) -> torch.Tensor:
-        if n_control_points < 1 + degree:
-            raise ValueError("Not enough control points for the given degree to form internal knots.")
-
-        # Generates knots in [-1, 1]
-        k_min, k_max = -1.0, 1.0  # Target range for normalized u
-
-        head_knots = torch.full((degree + 1,), k_min, dtype=dtype)
-        tail_knots = torch.full((degree + 1,), k_max, dtype=dtype)
-
-        num_internal_knots = n_control_points - degree - 1
-        if num_internal_knots == 0:
-            internal_knots = torch.empty(0, dtype=dtype)
-        else:
-            internal_knots = torch.linspace(k_min, k_max, num_internal_knots + 2, dtype=dtype)[1:-1]
-
-        return torch.cat([head_knots, internal_knots, tail_knots])
 
     def __repr__(self):
         return (
@@ -458,6 +483,41 @@ class BSplineCurveBase(nn.Module):
         # self.control_points has shape (M, C, D)
         # Should return tensor of shape (N, M, D)
         raise NotImplementedError("This method should be implemented in derived classes")
+
+
+def bspline_curves(
+    u: torch.Tensor, control_points: torch.Tensor, knots: Optional[torch.Tensor] = None, degree: int = 3
+):
+    r"""Evaluate multiple B-Spline curves, each with its own control points, sharing the same knots and degree.
+
+    This function allow back-propagating both through the control points and the argument. Useful as a layer in
+    a neural network.
+
+    Args:
+        u (torch.Tensor): A tensor of size B x C of values between `knots.min()` and `knots.max()`, representing
+            a mini-batch of B arguments for sampling each of the C curves.
+        control_points (torch.Tensor): A tensor of size C x M x D, representing C tontrol points of M curves
+            embedded in D-dimensional space.
+        knots (torch.Tensor, optional): A 1D tensor of size M + degree + 1 representing the spline function's knot
+            vector. `None` means uniformly-spaced knots between -1 and 1 with the not-a-knot boundary
+            conditions. (defult: `None`)
+        degree (int): The degree of the B-Spline function. (default: 3, meaning a cubic spline)
+
+    Returns:
+        A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
+        D-dimensional space.
+
+    """
+    if knots is None:
+        n_control_points = control_points.shape[1]
+        knots = uniform_augmented_knots(n_control_points, degree)
+
+    return BSplineFunction.apply(
+        u,
+        control_points,
+        knots,
+        degree,
+    )
 
 
 class BSplineEmbeddings(BSplineCurveBase):
