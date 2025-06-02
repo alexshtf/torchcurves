@@ -77,28 +77,25 @@ class LegendreCurveFunction(torch.autograd.Function):
         return deriv_basis
 
     @staticmethod
-    def forward(ctx, x: torch.Tensor, control_points: torch.Tensor, degree: int) -> torch.Tensor:
+    def forward(ctx, x: torch.Tensor, coefficients: torch.Tensor, degree: int) -> torch.Tensor:
         """Forward pass for Legendre curve (batched for multiple curves).
 
         Args:
             ctx: Context object to save tensors for backward pass.
             x: Parameter values, shape (N, M). N samples, M curves. Expected in [-1, 1].
-            control_points: Control points, shape (M, C, D). C = degree + 1.
+            coefficients: Legendre polynomial coefficients, shape (M, C, D). C = degree + 1.
             degree: Degree of the Legendre polynomial basis.
 
         Returns:
             points: Evaluated points on the curves, shape (N, M, D).
 
         """
-        # x: (N, M)
-        # control_points: (M, C, D) where C = degree + 1
-
         basis_funcs = LegendreCurveFunction._eval_legendre_polys(x, degree)  # (N, M, C)
 
         # points[n,m,d] = sum_c basis_funcs[n,m,c] * control_points[m,c,d]
-        points = torch.einsum("nmc,mcd->nmd", basis_funcs, control_points)  # (N, M, D)
+        points = torch.einsum("nmc,mcd->nmd", basis_funcs, coefficients)  # (N, M, D)
 
-        ctx.save_for_backward(x, control_points, basis_funcs)  # Save x for derivative calculation
+        ctx.save_for_backward(x, coefficients, basis_funcs)  # Save x for derivative calculation
         ctx.degree = degree
         return points
 
@@ -190,7 +187,7 @@ class LegendreCurve(nn.Module):
         if self.normalization_scale <= 0:
             raise ValueError(f"Normalization scale must be positive, but {normalization_scale} was given.")
 
-        # Coefficients (control points) shape: (M, C, D)
+        # Coefficients shape: (M, C, D)
         self.coefficients = nn.Parameter(torch.empty(self.num_curves, self.n_coefficients, self.dim))
         nn.init.xavier_uniform_(self.coefficients)  # Works for 3D tensors
 

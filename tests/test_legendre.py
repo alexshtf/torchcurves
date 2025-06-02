@@ -65,8 +65,8 @@ class TestLegendreCurveFunction(unittest.TestCase):
     def test_constant_function_degree0(self):
         degree = 0
         num_curves_m = 1
-        # control_points: (M, C, D) -> (1, 1, 1)
-        control_points = torch.tensor([[[2.5]]], dtype=self.default_dtype, device=self.device)
+        # coefficients: (M, C, D) -> (1, 1, 1)
+        coefficients = torch.tensor([[[2.5]]], dtype=self.default_dtype, device=self.device)
 
         x_inputs_scalar = torch.tensor([-1.0, 0.0, 0.5, 1.0], dtype=self.default_dtype, device=self.device)
 
@@ -74,11 +74,11 @@ class TestLegendreCurveFunction(unittest.TestCase):
             # x: (N, M) -> (1, 1)
             x = x_val_scalar_item.view(1, num_curves_m)
             # points: (N, M, D) -> (1, 1, 1)
-            points = LegendreCurveFunction.apply(x, control_points, degree)
-            self.assertAlmostEqual(points.squeeze().item(), control_points.squeeze().item(), places=5)
+            points = LegendreCurveFunction.apply(x, coefficients, degree)
+            self.assertAlmostEqual(points.squeeze().item(), coefficients.squeeze().item(), places=5)
 
             x_gc = x.clone().requires_grad_(True)
-            cp_gc = control_points.clone()  # Not requiring grad for CP in this specific check
+            cp_gc = coefficients.clone()  # Not requiring grad for CP in this specific check
 
             self.assertTrue(
                 torch.autograd.gradcheck(
@@ -99,21 +99,21 @@ class TestLegendreCurveFunction(unittest.TestCase):
         num_curves_m = 1
         const_val = 5.0
         # C(x) = CP0*P0 + CP1*P1 + CP2*P2. If C(x) = const_val, then CP0=const_val, CP1=0, CP2=0.
-        # control_points: (M,C,D) -> (1, 3, 1)
-        control_points = torch.tensor([[[const_val], [0.0], [0.0]]], dtype=self.default_dtype, device=self.device)
+        # coefficients: (M,C,D) -> (1, 3, 1)
+        coefficients = torch.tensor([[[const_val], [0.0], [0.0]]], dtype=self.default_dtype, device=self.device)
 
         x_inputs_scalar = torch.tensor([-0.8, 0.0, 0.5, 0.9], dtype=self.default_dtype, device=self.device)
         x_inputs = x_inputs_scalar.unsqueeze(1)  # (N,1) for M=1 curve
 
         # points: (N,M,D) -> (N,1,1)
-        points = LegendreCurveFunction.apply(x_inputs, control_points, degree)
+        points = LegendreCurveFunction.apply(x_inputs, coefficients, degree)
         expected_points = torch.full(
             (x_inputs.shape[0], num_curves_m, 1), const_val, dtype=self.default_dtype, device=self.device
         )
         torch.testing.assert_close(points, expected_points, atol=1e-5, rtol=1e-5)
 
         x_gc = x_inputs.clone().requires_grad_(True)
-        cp_gc = control_points.clone().requires_grad_(True)
+        cp_gc = coefficients.clone().requires_grad_(True)
         output = LegendreCurveFunction.apply(x_gc, cp_gc, degree)
         output.sum().backward()
 
@@ -131,8 +131,8 @@ class TestLegendreCurveFunction(unittest.TestCase):
     def test_linear_function(self):
         degree = 1  # C(x) = CP0*P0 + CP1*P1 = CP0 + CP1*x.
         # To get C(x)=x: CP0=0, CP1=1.
-        # control_points: (M,C,D) -> (1,2,1)
-        control_points = torch.tensor([[[0.0], [1.0]]], dtype=self.default_dtype, device=self.device)
+        # coefficients: (M,C,D) -> (1,2,1)
+        coefficients = torch.tensor([[[0.0], [1.0]]], dtype=self.default_dtype, device=self.device)
 
         x_inputs_scalar = torch.tensor([-1.0, -0.5, 0.0, 0.5, 1.0], dtype=self.default_dtype, device=self.device)
         x_inputs = x_inputs_scalar.unsqueeze(1)  # (N,1)
@@ -140,11 +140,11 @@ class TestLegendreCurveFunction(unittest.TestCase):
         expected_points_scalar = x_inputs_scalar  # C(x) = x
         expected_points = expected_points_scalar.unsqueeze(1).unsqueeze(1)  # (N,1,1)
 
-        points = LegendreCurveFunction.apply(x_inputs, control_points, degree)
+        points = LegendreCurveFunction.apply(x_inputs, coefficients, degree)
         torch.testing.assert_close(points, expected_points, atol=1e-6, rtol=1e-5)
 
         x_gc = x_inputs.clone().requires_grad_(True)
-        cp_gc = control_points.clone().requires_grad_(True)
+        cp_gc = coefficients.clone().requires_grad_(True)
 
         self.assertTrue(
             torch.autograd.gradcheck(
@@ -175,8 +175,8 @@ class TestLegendreCurveFunction(unittest.TestCase):
         degree = 2  # C(x) = CP0*P0 + CP1*P1 + CP2*P2 = CP0 + CP1*x + CP2*0.5*(3x^2-1)
         # To get C(x)=x^2: (1.5*CP2)x^2 + (CP1)x + (CP0 - 0.5*CP2) = x^2
         # CP2 = 2/3, CP1 = 0, CP0 = 1/3.
-        # control_points: (M,C,D) -> (1,3,1)
-        control_points = torch.tensor([[[1 / 3], [0.0], [2 / 3]]], dtype=self.default_dtype, device=self.device)
+        # coefficients: (M,C,D) -> (1,3,1)
+        coefficients = torch.tensor([[[1 / 3], [0.0], [2 / 3]]], dtype=self.default_dtype, device=self.device)
 
         x_inputs_scalar = torch.tensor([-1.0, -0.5, 0.0, 0.5, 1.0], dtype=self.default_dtype, device=self.device)
         x_inputs = x_inputs_scalar.unsqueeze(1)  # (N,1)
@@ -184,11 +184,11 @@ class TestLegendreCurveFunction(unittest.TestCase):
         expected_points_scalar = x_inputs_scalar.pow(2)  # C(x) = x^2
         expected_points = expected_points_scalar.unsqueeze(1).unsqueeze(1)  # (N,1,1)
 
-        points = LegendreCurveFunction.apply(x_inputs, control_points, degree)
+        points = LegendreCurveFunction.apply(x_inputs, coefficients, degree)
         torch.testing.assert_close(points, expected_points, atol=1e-6, rtol=1e-5)
 
         x_gc = x_inputs.clone().requires_grad_(True)
-        cp_gc = control_points.clone().requires_grad_(True)
+        cp_gc = coefficients.clone().requires_grad_(True)
         self.assertTrue(
             torch.autograd.gradcheck(
                 lambda val_x: LegendreCurveFunction.apply(val_x, cp_gc.detach(), degree).sum(),
@@ -216,7 +216,7 @@ class TestLegendreCurveFunction(unittest.TestCase):
 
     def test_boundary_values_known_function(self):
         degree = 1  # C(x) = x. CP0=0, CP1=1.
-        control_points = torch.tensor([[[0.0], [1.0]]], dtype=self.default_dtype, device=self.device)  # (1,2,1)
+        coefficients = torch.tensor([[[0.0], [1.0]]], dtype=self.default_dtype, device=self.device)  # (1,2,1)
 
         x_start_scalar = torch.tensor([-1.0], dtype=self.default_dtype, device=self.device)
         x_end_scalar = torch.tensor([1.0], dtype=self.default_dtype, device=self.device)
@@ -224,8 +224,8 @@ class TestLegendreCurveFunction(unittest.TestCase):
         x_start = x_start_scalar.unsqueeze(1)  # (1,1)
         x_end = x_end_scalar.unsqueeze(1)  # (1,1)
 
-        point_start = LegendreCurveFunction.apply(x_start, control_points, degree)  # (1,1,1)
-        point_end = LegendreCurveFunction.apply(x_end, control_points, degree)  # (1,1,1)
+        point_start = LegendreCurveFunction.apply(x_start, coefficients, degree)  # (1,1,1)
+        point_end = LegendreCurveFunction.apply(x_end, coefficients, degree)  # (1,1,1)
 
         torch.testing.assert_close(
             point_start.squeeze(), torch.tensor(-1.0, dtype=self.default_dtype, device=self.device)
@@ -238,11 +238,11 @@ class TestLegendreCurveFunction(unittest.TestCase):
         dim_d = 2
         degree = 2  # C = 3 coefficients
 
-        # control_points_batched: (M, C, D)
-        control_points_batched = torch.randn(
+        # coefficients_batched: (M, C, D)
+        coefficients_batched = torch.randn(
             num_curves_m, degree + 1, dim_d, dtype=self.default_dtype, device=self.device
         )
-        control_points_batched_clone_for_grad = control_points_batched.clone().requires_grad_(True)
+        coefficients_batched_clone_for_grad = coefficients_batched.clone().requires_grad_(True)
 
         # x_inputs_batched: (N, M) in [-1, 1]
         x_inputs_batched = torch.rand(n_samples_n, num_curves_m, dtype=self.default_dtype, device=self.device) * 2 - 1
@@ -250,13 +250,13 @@ class TestLegendreCurveFunction(unittest.TestCase):
 
         # 1. Evaluate all curves together
         points_batched_eval = LegendreCurveFunction.apply(
-            x_inputs_batched_clone_for_grad, control_points_batched_clone_for_grad, degree
+            x_inputs_batched_clone_for_grad, coefficients_batched_clone_for_grad, degree
         )  # (N, M, D)
 
         # 2. Evaluate each curve individually
         points_individual_list = []
         for i in range(num_curves_m):
-            cp_single = control_points_batched[i : i + 1, :, :].clone()  # Shape (1, C, D)
+            cp_single = coefficients_batched[i : i + 1, :, :].clone()  # Shape (1, C, D)
             x_single = x_inputs_batched[:, i : i + 1].clone()  # Shape (N, 1)
 
             points_single = LegendreCurveFunction.apply(x_single, cp_single, degree)  # Output (N, 1, D)
@@ -270,26 +270,26 @@ class TestLegendreCurveFunction(unittest.TestCase):
 
         points_batched_eval.backward(grad_output)
         grad_x_batched_actual = x_inputs_batched_clone_for_grad.grad.clone()
-        grad_cp_batched_actual = control_points_batched_clone_for_grad.grad.clone()
+        grad_cp_batched_actual = coefficients_batched_clone_for_grad.grad.clone()
 
         expected_grad_x_from_individuals = torch.zeros_like(x_inputs_batched)
-        expected_grad_cp_from_individuals = torch.zeros_like(control_points_batched)
+        expected_grad_coef_from_individuals = torch.zeros_like(coefficients_batched)
 
         for i in range(num_curves_m):
-            cp_single_grad_target = control_points_batched[i : i + 1, :, :].detach().clone().requires_grad_(True)
+            coef_single_grad_target = coefficients_batched[i : i + 1, :, :].detach().clone().requires_grad_(True)
             x_single_grad_target = x_inputs_batched[:, i : i + 1].detach().clone().requires_grad_(True)
 
             points_single_eval_for_grad = LegendreCurveFunction.apply(
-                x_single_grad_target, cp_single_grad_target, degree
+                x_single_grad_target, coef_single_grad_target, degree
             )
             grad_output_single = grad_output[:, i : i + 1, :]  # (N, 1, D)
             points_single_eval_for_grad.backward(grad_output_single)
 
             expected_grad_x_from_individuals[:, i : i + 1] = x_single_grad_target.grad
-            expected_grad_cp_from_individuals[i : i + 1, :, :] = cp_single_grad_target.grad
+            expected_grad_coef_from_individuals[i : i + 1, :, :] = coef_single_grad_target.grad
 
         torch.testing.assert_close(grad_x_batched_actual, expected_grad_x_from_individuals, atol=1e-6, rtol=1e-5)
-        torch.testing.assert_close(grad_cp_batched_actual, expected_grad_cp_from_individuals, atol=1e-6, rtol=1e-5)
+        torch.testing.assert_close(grad_cp_batched_actual, expected_grad_coef_from_individuals, atol=1e-6, rtol=1e-5)
 
 
 class TestLegendreCurveModule(unittest.TestCase):
