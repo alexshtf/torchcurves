@@ -43,41 +43,41 @@ input_dim = 2
 intermediate_dim = 5
 knots = 10
 
-spline_kan = nn.Sequential([
+kan = nn.Sequential(
     # layer 1
-    tc.BSplineCurve(input_dim, intermediate_dim, knots) # result shape = B x input_dim x intermediate_dim
-    tc.Sum(dim=-2) # sum over the features, the input_dim dimension
+    tc.BSplineCurve(input_dim, intermediate_dim, knots_config=knots, normalize_fn='rational'),
+    tc.Sum(dim=-2),
     # layer 2
-    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots)
-    tc.Sum(dim=-2)
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots_config=knots, normalize_fn='rational'),
+    tc.Sum(dim=-2),
     # layer 3
-    tc.BSplineCurve(intermediate_dim, 1, knots),
-    tc.Sum(dim=-2)
-])
+    tc.BSplineCurve(intermediate_dim, 1, knots_config=knots, normalize_fn='rational'),
+    tc.Sum(dim=-2),
+)
 ```
 Yes, we know the original KAN paper used a different curve parametrization, B-Spline + arcsinh, but the whole point
 of this repo is showing that KAN activations can be parametrized in arbitrary ways.
 
-Here is A KAN based on Legendre polynomials:
+For example, here is A KAN based on Legendre polynomials of degree 5, with rational normalization:
 ```python
 import torchcurves as tc
 from torch import nn
 
 input_dim = 2
 intermediate_dim = 5
-degree = 10
+degree = 5
 
-legendre_kan = nn.Sequential([
+kan = nn.Sequential(
     # layer 1
-    tc.LegendreCurve(input_dim, intermediate_dim, knots)
-    tc.Sum(dim=-2)
+    tc.LegendreCurve(input_dim, intermediate_dim, degree=degree, normalize_fn='rational'),
+    tc.Sum(dim=-2),
     # layer 2
-    tc.LegendreCurve(intermediate_dim, intermediate_dim, knots)
-    tc.Sum(dim=-2)
+    tc.LegendreCurve(intermediate_dim, intermediate_dim, degree=degree, normalize_fn='rational'),
+    tc.Sum(dim=-2),
     # layer 3
-    tc.LegendreCurve(intermediate_dim, 1, knots),
-    tc.Sum(dim=-2)
-])
+    tc.LegendreCurve(intermediate_dim, 1, degree=degree, normalize_fn='rational'),
+    tc.Sum(dim=-2),
+)
 ```
 Since KANs are the primary use-case for the `tc.Sum()` layer, we can omit the `dim=2` argument, but it is provided
 here for clarity.
