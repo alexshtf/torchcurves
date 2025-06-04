@@ -455,7 +455,7 @@ class BSplineCurveBase(nn.Module):
             f"knots_shape={self.knots.shape if hasattr(self, 'knots') else None})"
         )
 
-    def _prepare_arg(self, u: torch.Tensor) -> Tuple[torch.Size, torch.Tensor]:
+    def _prepare_arg(self, u: torch.Tensor) -> torch.Tensor:
         return self.normalize_fn(u, self.normalization_scale, out_min=self._knot_min, out_max=self._knot_max)
 
     def forward(self, u: torch.Tensor):
