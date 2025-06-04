@@ -95,7 +95,7 @@ here for clarity.
 
 # Advanced features
 The curves we provide here typically rely on their inputs to lie in a compact interval, typically [-1, 1]. So arbitrary
-inputs need to be normalized to this interval. We provide two simple out-of-the-box normalizations stragies described
+inputs need to be normalized to this interval. We provide two simple out-of-the-box normalizations strategies described
 below.
 
 ## Clamping
