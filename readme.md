@@ -52,7 +52,8 @@ input_dim = 2
 intermediate_dim = 5
 num_control_points = 10
 
-config = dict(knots_config=num_control_points, normalize_fn='rational')
+config = dict(knots_config=num_control_points)
+# Normalization options are described in the "Advanced features" section below.
 kan = nn.Sequential(
     # layer 1
     tc.BSplineCurve(input_dim, intermediate_dim, **config),
@@ -68,7 +69,7 @@ kan = nn.Sequential(
 Yes, we know the original KAN paper used a different curve parametrization, B-Spline + arcsinh, but the whole point
 of this repo is showing that KAN activations can be parametrized in arbitrary ways.
 
-For example, here is A KAN based on Legendre polynomials of degree 5, with rational normalization:
+For example, here is a KAN based on Legendre polynomials of degree 5:
 ```python
 import torchcurves as tc
 from torch import nn
@@ -77,7 +78,7 @@ input_dim = 2
 intermediate_dim = 5
 degree = 5
 
-config = dict(degree=degree, normalize_fn='rational')
+config = dict(degree=degree)
 kan = nn.Sequential(
     # layer 1
     tc.LegendreCurve(input_dim, intermediate_dim, **config),
@@ -90,6 +91,7 @@ kan = nn.Sequential(
     tc.Sum(dim=-2),
 )
 ```
+
 Since KANs are the primary use-case for the `tc.Sum()` layer, we can omit the `dim=2` argument, but it is provided
 here for clarity.
 
@@ -121,7 +123,7 @@ In Python it looks like this:
 tc.BSplineCurve(curve_dim, normalization_fn='rational', normalization_scale=s)
 ```
 
-## Example
+## Example: B-Spline KAN with rational normalization
 A KAN based on rationally-scaled B-Spline basis with the default scale of $s=1$:
 ```python
 spline_kan = nn.Sequential([
@@ -135,6 +137,29 @@ spline_kan = nn.Sequential([
     tc.BSplineCurve(intermediate_dim, 1, knot_config=knots, normalization_fn='rational'),
     tc.Sum()
 ])
+```
+
+### Legendre KAN with rational normalization
+```python
+import torchcurves as tc
+from torch import nn
+
+input_dim = 2
+intermediate_dim = 5
+degree = 5
+
+config = dict(degree=degree, normalize_fn="rational")
+kan = nn.Sequential(
+    # layer 1
+    tc.LegendreCurve(input_dim, intermediate_dim, **config),
+    tc.Sum(dim=-2),
+    # layer 2
+    tc.LegendreCurve(intermediate_dim, intermediate_dim, **config),
+    tc.Sum(dim=-2),
+    # layer 3
+    tc.LegendreCurve(intermediate_dim, 1, **config),
+    tc.Sum(dim=-2),
+)
 ```
 
 # Development
