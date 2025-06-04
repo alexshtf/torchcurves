@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torchcurves.bspline import BSplineCurve, BSplineFunction
+from torchcurves.bspline import BSplineCurve, BSplineFunction, bspline_curves
 
 
 class TestBSplineFunction(unittest.TestCase):
@@ -615,6 +615,18 @@ class TestBSplineCurveModule(unittest.TestCase):
         loss.backward()
         self.assertIsNotNone(module_cuda.control_points.grad)
         self.assertEqual(module_cuda.control_points.grad.device.type, "cuda")
+
+
+def test_bspline_curves_default_knots_device_dtype():
+    dtype = torch.float64
+    device = torch.device("cpu")
+
+    u = torch.tensor([[0.0]], dtype=dtype, device=device)
+    control_points = torch.zeros((1, 4, 1), dtype=dtype, device=device)
+
+    out = bspline_curves(u, control_points)
+
+    assert out.dtype == control_points.dtype
 
 
 if __name__ == "__main__":
