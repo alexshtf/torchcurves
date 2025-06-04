@@ -629,5 +629,21 @@ def test_bspline_curves_default_knots_device_dtype():
     assert out.dtype == control_points.dtype
 
 
+def test_bspline_curves_default_knots_cuda():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA not available, skipping test.")
+
+    dtype = torch.float64
+    device = torch.device("cuda")
+
+    control_points = torch.randn(1, 4, 1, dtype=dtype, device=device)
+    u = torch.linspace(-1, 1, 5, dtype=dtype, device=device).unsqueeze(1)
+
+    result = bspline_curves(u, control_points, knots=None, degree=3)
+
+    assert result.device == device
+    assert result.dtype == dtype
+
+
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])

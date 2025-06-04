@@ -45,7 +45,7 @@ def clamp(x: torch.Tensor, scale: float = 1, out_min: float = -1, out_max: float
         torch.Tensor: Clamped tensor.
 
     """
-    return torch.clip(x * scale, out_min, out_max)
+    return torch.clip(x / scale, out_min, out_max)
 
 
 normalization_catalogue = {
