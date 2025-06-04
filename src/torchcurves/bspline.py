@@ -510,7 +510,9 @@ def bspline_curves(
     """
     if knots is None:
         n_control_points = control_points.shape[1]
-        knots = uniform_augmented_knots(n_control_points, degree)
+        knots = uniform_augmented_knots(
+            n_control_points, degree, dtype=control_points.dtype, device=control_points.device
+        )
 
     return BSplineFunction.apply(
         u,
@@ -546,7 +548,9 @@ def bspline_embeddings(
     """
     n_control_points = control_points.shape[1]
     if knots is None:
-        knots = uniform_augmented_knots(n_control_points, degree)
+        knots = uniform_augmented_knots(
+            n_control_points, degree, dtype=control_points.dtype, device=control_points.device
+        )
 
     spans = BSplineFunction.find_spans(u, knots, degree, n_control_points)  # (N,M)
     basis_funcs = BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,deg+1)
