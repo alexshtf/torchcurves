@@ -494,14 +494,14 @@ def bspline_curves(
     a neural network.
 
     Args:
-        u (torch.Tensor): A tensor of size B x C of values between `knots.min()` and `knots.max()`, representing
-            a mini-batch of B arguments for sampling each of the C curves.
-        control_points (torch.Tensor): A tensor of size C x M x D, representing C tontrol points of M curves
-            embedded in D-dimensional space.
-        knots (torch.Tensor, optional): A 1D tensor of size M + degree + 1 representing the spline function's knot
-            vector. `None` means uniformly-spaced knots between -1 and 1 with the not-a-knot boundary
-            conditions. (defult: `None`)
-        degree (int): The degree of the B-Spline function. (default: 3, meaning a cubic spline)
+        u (torch.Tensor): A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
+            a mini-batch of ``B`` arguments for sampling each of the ``C`` curves.
+        control_points (torch.Tensor): A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
+            points each, embedded in ``D``-dimensional space.
+        knots (torch.Tensor, optional): A 1D tensor of size ``M + degree + 1`` representing the spline function's
+            knot vector. ``None`` means uniformly-spaced knots between ``-1`` and ``1`` with the not-a-knot boundary
+            conditions. (default: ``None``)
+        degree (int): The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
 
     Returns:
         A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
@@ -530,14 +530,14 @@ def bspline_embeddings(
     computation for this usecase than `bspline_curves`.
 
     Args:
-        u (torch.Tensor): A tensor of size B x C of values between `knots.min()` and `knots.max()`, representing
-            a mini-batch of B arguments for sampling each of the C curves.
-        control_points (torch.Tensor): A tensor of size C x M x D, representing C tontrol points of M curves
-            embedded in D-dimensional space.
-        knots (torch.Tensor, optional): A 1D tensor of size M + degree + 1 representing the spline function's knot
-            vector. `None` means uniformly-spaced knots between -1 and 1 with the not-a-knot boundary
-            conditions. (defult: `None`)
-        degree (int): The degree of the B-Spline function. (default: 3, meaning a cubic spline)
+        u (torch.Tensor): A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
+            a mini-batch of ``B`` arguments for sampling each of the ``C`` curves.
+        control_points (torch.Tensor): A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
+            points each, embedded in ``D``-dimensional space.
+        knots (torch.Tensor, optional): A 1D tensor of size ``M + degree + 1`` representing the spline function's knot
+            vector. ``None`` means uniformly-spaced knots between ``-1`` and ``1`` with the not-a-knot boundary
+            conditions. (default: ``None``)
+        degree (int): The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
 
     Returns:
         A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
