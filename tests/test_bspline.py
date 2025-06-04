@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torchcurves.bspline import BSplineCurve, BSplineFunction
+from torchcurves.bspline import BSplineCurve, BSplineFunction, bspline_curves
 
 
 class TestBSplineFunction(unittest.TestCase):
@@ -615,6 +615,22 @@ class TestBSplineCurveModule(unittest.TestCase):
         loss.backward()
         self.assertIsNotNone(module_cuda.control_points.grad)
         self.assertEqual(module_cuda.control_points.grad.device.type, "cuda")
+
+
+def test_bspline_curves_default_knots_cuda():
+    if not torch.cuda.is_available():
+        pytest.skip("CUDA not available, skipping test.")
+
+    dtype = torch.float64
+    device = torch.device("cuda")
+
+    control_points = torch.randn(1, 4, 1, dtype=dtype, device=device)
+    u = torch.linspace(-1, 1, 5, dtype=dtype, device=device).unsqueeze(1)
+
+    result = bspline_curves(u, control_points, knots=None, degree=3)
+
+    assert result.device == device
+    assert result.dtype == dtype
 
 
 if __name__ == "__main__":
