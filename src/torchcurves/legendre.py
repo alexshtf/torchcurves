@@ -134,6 +134,22 @@ class LegendreCurveFunction(torch.autograd.Function):
         return grad_x, grad_control_points, None
 
 
+def legendre_curves(x: torch.Tensor, coefficients: torch.Tensor, degree: int) -> torch.Tensor:
+    """Evaluate Legendre curve (batched for multiple curves).
+
+    Args:
+        ctx: Context object to save tensors for backward pass.
+        x: Parameter values, shape (N, M). N samples, M curves. Expected in [-1, 1].
+        coefficients: Legendre polynomial coefficients, shape (M, C, D). C = degree + 1.
+        degree: Degree of the Legendre polynomial basis. Will use (1 + degree) cofficients.
+
+    Returns:
+        points: Evaluated points on the curves, shape (N, M, D).
+
+    """
+    return LegendreCurveFunction.apply(x, coefficients, degree)
+
+
 class LegendreCurve(nn.Module):
     r"""PyTorch module for a batch of parametrized curves using Legendre polynomial basis.
 
