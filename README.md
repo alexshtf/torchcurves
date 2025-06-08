@@ -3,7 +3,7 @@
 - Call the default knot_config as n_control_points instead of num_knots. Also fix the example notebooks.
 - Add a notebook with embeddings + a factorization mahcine, and cite the continuos features papers of Rugamer and myself.
 
-# TorchCurves
+![logo](logo_small.png)
 
 A PyTorch module for differentiable parametric with learnable coefficients, such as a B-Spline curve with learnable control points.
 
