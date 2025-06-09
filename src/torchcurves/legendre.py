@@ -205,7 +205,7 @@ class LegendreCurve(nn.Module):
 
         # Coefficients shape: (M, C, D)
         self.coefficients = nn.Parameter(torch.empty(self.num_curves, self.n_coefficients, self.dim))
-        nn.init.xavier_uniform_(self.coefficients)  # Works for 3D tensors
+        nn.init.normal_(self.coefficients)
 
     def forward(self, u: torch.Tensor) -> torch.Tensor:
         """Evaluate the batch of Legendre curves.
