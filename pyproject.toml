@@ -5,7 +5,7 @@ description = "PyTorch module for differentiable parametric curves with learnabl
 authors = [
     { name = "Alex Shtoff", email = "alex.shtf@gmail.com" }
 ]
-readme = "README.md"
+readme = "readme.md"
 license = { text = "Apache 2.0" }
 requires-python = ">=3.9"
 keywords = ["pytorch", "bspline", "curves", "differentiable", "deep-learning", "geometric-deep-learning"]
@@ -29,8 +29,6 @@ dependencies = [
 
 [dependency-groups]
 dev = [
-    "ipykernel>=6.29.0",
-    "matplotlib>=3.8.0",
     "numpy>=1.17.0",
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -38,6 +36,14 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
+]
+examples = [
+    "ipykernel>=6.29.0",
+    "matplotlib>=3.8.0",
+    "ipywidgets>=8.1.7",
+    "kagglehub[pandas-datasets]>=0.3.12",
+    "pandas>=2.3.0",
+    "scikit-learn>=1.6.1",
 ]
 
 [project.urls]
