@@ -93,7 +93,11 @@ class LegendreCurveFunction(torch.autograd.Function):
         basis_funcs = LegendreCurveFunction._eval_legendre_polys(x, degree)  # (N, M, C)
 
         # points[n,m,d] = sum_c basis_funcs[n,m,c] * control_points[m,c,d]
-        points = torch.einsum("nmc,mcd->nmd", basis_funcs, coefficients)  # (N, M, D)
+        points_perm = torch.matmul(  # (m, n, d)
+            basis_funcs.permute(1, 0, 2),  # (m, n, c)
+            coefficients,  # (m, c, d)
+        )
+        points = points_perm.permute(1, 0, 2)
 
         ctx.save_for_backward(x, coefficients, basis_funcs)  # Save x for derivative calculation
         ctx.degree = degree
