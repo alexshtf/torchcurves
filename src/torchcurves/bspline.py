@@ -430,7 +430,7 @@ class BSplineCurveBase(nn.Module):
 
         # Control points shape: (m, c, d)
         self.control_points = nn.Parameter(torch.empty(self.num_curves, self.n_control_points_per_curve, self.dim))
-        nn.init.normal_(self.control_points)  # Works for 3D tensors
+        nn.init.xavier_uniform_(self.control_points)
 
         if isinstance(knots_config, int):
             # Knots are shared by all m curves
