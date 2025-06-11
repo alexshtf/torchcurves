@@ -5,7 +5,7 @@ description = "PyTorch module for differentiable parametric curves with learnabl
 authors = [
     { name = "Alex Shtoff", email = "alex.shtf@gmail.com" }
 ]
-readme = "readme.md"
+readme = "README.md"
 license = { text = "Apache 2.0" }
 requires-python = ">=3.9"
 keywords = ["pytorch", "bspline", "curves", "differentiable", "deep-learning", "geometric-deep-learning"]
