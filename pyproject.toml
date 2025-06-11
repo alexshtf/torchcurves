@@ -36,6 +36,7 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
+    "pdoc>=14.0.0",
 ]
 examples = [
     "ipykernel>=6.29.0",
