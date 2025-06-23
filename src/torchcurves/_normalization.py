@@ -1,7 +1,9 @@
 import torch
 
+from .types import NormalizationFn, TensorLike
 
-def rational(x: torch.Tensor, scale: float = 1, out_min: float = -1, out_max: float = 1):
+
+def rational(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1):
     r"""Normalize values using the "Legendre Rational Functions" [1] normalization method.
 
     The normalization is performed using the formula:
@@ -24,12 +26,13 @@ def rational(x: torch.Tensor, scale: float = 1, out_min: float = -1, out_max: fl
             Journal of Computational Mathematics, pp.457-474.
 
     """
+    x = torch.as_tensor(x)
     result = x / torch.sqrt(scale**2 + x.square())
     out_scaled = ((out_max - out_min) * result + out_max + out_min) / 2
     return torch.clip(out_scaled, out_min, out_max)
 
 
-def clamp(x: torch.Tensor, scale: float = 1, out_min: float = -1, out_max: float = 1):
+def clamp(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1):
     r"""Clamp values in a tensor to a specified range.
 
     The function clamps the values of the input tensor `x` to be within the output range, after scaling by the
@@ -45,10 +48,11 @@ def clamp(x: torch.Tensor, scale: float = 1, out_min: float = -1, out_max: float
         torch.Tensor: Clamped tensor.
 
     """
+    x = torch.as_tensor(x)
     return torch.clip(x / scale, out_min, out_max)
 
 
-normalization_catalogue = {
+normalization_catalogue: dict[str, NormalizationFn] = {
     "rational": rational,
     "clamp": clamp,
 }

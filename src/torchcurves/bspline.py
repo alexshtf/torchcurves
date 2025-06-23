@@ -9,7 +9,7 @@ from .types import NormalizationFn
 
 
 def uniform_augmented_knots(
-    n_control_points: int, degree: int, dtype=torch.float32, device: Union[torch.device, str] = None
+    n_control_points: int, degree: int, dtype=torch.float32, device: Union[torch.device, str, None] = None
 ) -> torch.Tensor:
     """Generate an augmented knot vector with uniform spacing in [-1, 1] for B-spline curves.
 
@@ -289,7 +289,7 @@ class BSplineFunction(torch.autograd.Function):
         return points
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, None, None]:
+    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, None, None]:  # type: ignore
         # grad_output shape: (N, M, D)
         u, control_points, knots, spans, basis_funcs = ctx.saved_tensors
         # u: (N,M), control_points: (M,C,D), knots: (K,), spans: (N,M), basis_funcs: (N,M,deg+1)
@@ -376,6 +376,8 @@ class BSplineCurveBase(nn.Module):
 
     """
 
+    knots: torch.Tensor  # explicit annotation for type-checking
+
     def __init__(
         self,
         num_curves: int,
@@ -399,9 +401,10 @@ class BSplineCurveBase(nn.Module):
         self.degree = degree  # p
 
         if isinstance(normalize_fn, str):
-            self.normalize_fn = normalization_catalogue.get(normalize_fn)
-            if self.normalize_fn is None:
+            normalize_fn_callable = normalization_catalogue.get(normalize_fn)
+            if normalize_fn_callable is None:
                 raise ValueError(f"Unknown normalization {normalize_fn}")
+            self.normalize_fn = normalize_fn_callable
         else:
             self.normalize_fn = normalize_fn
 
@@ -443,8 +446,8 @@ class BSplineCurveBase(nn.Module):
         self.register_buffer("knots", knot_buffer)
         # Determine knot range for normalization, assuming knots are sorted.
         # Effective parameter range for B-spline is [knots[degree], knots[n_control_points_per_curve]]
-        self._knot_min = self.knots[self.degree].item()
-        self._knot_max = self.knots[self.n_control_points_per_curve].item()
+        self._knot_min = knot_buffer[self.degree].item()
+        self._knot_max = knot_buffer[self.n_control_points_per_curve].item()
 
     def __repr__(self):
         return (

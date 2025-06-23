@@ -90,9 +90,10 @@ class LegendreCurve(nn.Module):
         self.n_coefficients = self.degree + 1  # C (coefficients per curve)
 
         if isinstance(normalize_fn, str):
-            self.normalize_fn = normalization_catalogue.get(normalize_fn)
-            if self.normalize_fn is None:
+            normalize_fn_from_catalogue = normalization_catalogue.get(normalize_fn)
+            if normalize_fn_from_catalogue is None:
                 raise ValueError(f"Unknown normalization {normalize_fn}")
+            self.normalize_fn = normalize_fn_from_catalogue
         else:
             self.normalize_fn = normalize_fn
 
