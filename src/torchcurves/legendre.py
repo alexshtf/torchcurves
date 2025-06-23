@@ -27,7 +27,7 @@ def _legendre_batch_curves(x, coefs):
         alpha = (2 * k + 1) / (k + 1)
         beta = (k + 1) / (k + 2)
         curr_coef = coefs[k].unsqueeze(0)  # (1 x c x m)
-        bnext = curr_coef + alpha * x * b1 - beta * b2
+        bnext = torch.add(torch.addcmul(curr_coef, alpha, x, b1), -beta, b2)
         b2, b1 = b1, bnext
     return b1
 
