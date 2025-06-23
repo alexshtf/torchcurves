@@ -14,6 +14,7 @@ from torchcurves.legendre import LegendreCurve, legendre_curves
 @pytest.mark.parametrize("n_samples", [1, 10, 100])
 @pytest.mark.parametrize("dtype", [torch.float32, torch.float64])
 def test_legendre_curves(num_curves, dim, degree, n_samples, dtype):
+    torch.random.manual_seed(42)  # For reproducibility
     coefs = torch.randn(1 + degree, num_curves, dim, dtype=dtype)
     x = 2 * torch.rand(n_samples, num_curves, dtype=dtype)
     torch_eval = legendre_curves(x, coefs)
