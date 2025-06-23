@@ -33,7 +33,7 @@ jobs:
 
     - name: Format with black
       run: |
-        uv run black --check src/ tests/
+        uv run black --check --line-length 120 src/ tests/
 
     - name: Type check with mypy
       run: |
