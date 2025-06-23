@@ -369,7 +369,7 @@ class BSplineCurveBase(nn.Module):
             A uniformly-spaced knot vector will be automatically generated in [-1, 1].
             If a torch.Tensor, it explicitly specifies the knot values. The number
             of control points will be inferred. The tensor should be 1D.
-        normalize_fn (Literal["clamp", "rational"] | NormalizationFn):
+        normalize_fn (Union[Literal["clamp", "rational"], NormalizationFn]):
             Normalization method for inputs `u`. (default: "clamp")
         normalization_scale (float):
             Scale factor for normalization (default: 1.0).
@@ -382,7 +382,7 @@ class BSplineCurveBase(nn.Module):
         dim: int,
         degree: int = 3,
         knots_config: Union[int, torch.Tensor] = 10,  # This is n_control_points_per_curve
-        normalize_fn: Literal["clamp", "rational"] | NormalizationFn = "clamp",
+        normalize_fn: Union[Literal["clamp", "rational"], NormalizationFn] = "clamp",
         normalization_scale: float = 1.0,
     ):
         super().__init__()

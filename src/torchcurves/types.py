@@ -1,7 +1,7 @@
-from typing import Callable, Sequence
+from typing import Callable, Sequence, Union
 
 import torch
 
-Numeric = int | float
-TensorLike = torch.Tensor | Sequence[Numeric]
+Numeric = Union[int, float]
+TensorLike = Union[torch.Tensor, Sequence[Numeric]]
 NormalizationFn = Callable[[TensorLike, float], torch.Tensor]
