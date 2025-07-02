@@ -36,7 +36,14 @@ dev = [
     "ruff>=0.1.0",
     "mypy>=1.0.0",
     "pre-commit>=3.0.0",
+]
+doc = [
     "sphinx>=7.4.7",
+    "sphinx-autodoc-typehints>=2.3.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-autobuild>=2024.10.3",
+    "sphinxext-opengraph>=0.10.0",
+
 ]
 examples = [
     "ipykernel>=6.29.0",
