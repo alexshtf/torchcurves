@@ -24,12 +24,14 @@ jobs:
       - name: Install build dependencies
         run: |
           uv venv
-          uv pip install -e .[dev] build pdoc
+          uv sync --all-groups
 
       - name: Build package
         run: |
-          uv run python -m build
+          uv build
 
       - name: Build documentation
         run: |
-          uv run pdoc src/torchcurves -o docs
+          uv run sphinx-apidoc -o doc/source src/torchcurves
+          cd doc
+          make html
