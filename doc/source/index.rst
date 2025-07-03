@@ -1,12 +1,11 @@
-.. TorchCurves documentation master file
-
 TorchCurves documentation
 =========================
+TODO:
+   - add notebooks using nbsphinx
+   - include readme.md file correctly.
+   - Learn how AutoSummary works, and do it.
 
-.. autosummary::
-   :toctree: _api
-   :recursive:
-   :caption: API Reference
-   :nosignatures:
+.. toctree::
+   :caption: API Doc
 
-   torchcurves
+   modules

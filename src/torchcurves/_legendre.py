@@ -50,16 +50,21 @@ class LegendreCurve(nn.Module):
     r"""PyTorch module for a batch of parametrized curves using Legendre polynomial basis.
 
     The learnable parameters are the control points (coefficients) of the Legendre series for each curve.
-    All curves share the same degree.
-    The input parameter `u` to the forward method is normalized to [-1, 1].
-    Each curve is C_m(u) = sum_{k=0}^{degree} CP_{m,k} * P_k(u_norm).
+    All curves share the same degree. The input parameter `u` to the forward method is normalized to [-1, 1].
+    Each curve is:
+
+    .. math::
+
+        \mathbf{C}_m(u) = \sum_{k=0}^{\mathrm{degree}} \mathbf{C}_{m,k} \cdot P_k(u),
+
+    where :math:`P_k` is the :math:`k`-th Legendre polynomial.
 
     Args:
-        num_curves (int): Number of Legendre curves to define (M).
-        dim (int): Dimension of each curve's output points (D).
-        degree (int): Degree of the Legendre polynomial basis (shared by all curves).
+        num_curves: Number of Legendre curves to define (M).
+        dim: Dimension of each curve's output points (D).
+        degree: Degree of the Legendre polynomial basis (shared by all curves).
                       The number of coefficients per curve will be `degree + 1`.
-        normalize_fn (Union[Literal["clamp", "rational"], NormalizationFn]):
+        normalize_fn:
             Normalization method for inputs `u`. (default: "clamp")
         normalization_scale (float):
             Scale factor for normalization (default: 1.0).

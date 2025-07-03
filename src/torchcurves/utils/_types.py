@@ -15,13 +15,13 @@ class NormalizationFn(Protocol):
     A normalization function takes a tensor and normalizes it based on the provided parameters.
 
     Args:
-        tensor (TensorLike): The input tensor to normalize.
-        min_val (float): The minimum value for normalization.
-        max_val (float): The maximum value for normalization.
-        scale (float): Scale factor for normalization.
+        tensor: The input tensor to normalize.
+        min_val: The minimum value for normalization.
+        max_val: The maximum value for normalization.
+        scale: Scale factor for normalization.
 
     Returns:
-        torch.Tensor: The normalized tensor.
+        The normalized tensor.
 
     """
 

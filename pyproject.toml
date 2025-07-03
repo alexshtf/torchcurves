@@ -39,11 +39,12 @@ dev = [
 ]
 doc = [
     "sphinx>=7.4.7",
+    "myst-parser>=3.0.1",
     "sphinx-autodoc-typehints>=2.3.0",
     "sphinx-copybutton>=0.5.2",
     "sphinx-autobuild>=2024.10.3",
     "sphinxext-opengraph>=0.10.0",
-
+    "pydata-sphinx-theme>=0.16.1",
 ]
 examples = [
     "ipykernel>=6.29.0",

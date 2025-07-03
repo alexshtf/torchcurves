@@ -360,18 +360,16 @@ class BSplineCurveBase(nn.Module):
     (or the range of the knots if specified differently) using the specified normalization strategy.
 
     Args:
-        num_curves (int): Number of B-spline curves to define in this module (m).
-        dim (int): Dimension of each curve's output points (d).
-        degree (int): Degree of the B-spline (p) (default: 3).
-        knots_config (Union[int, torch.Tensor]):
+        num_curves: Number of B-spline curves to define in this module (m).
+        dim: Dimension of each curve's output points (d).
+        degree: Degree of the B-spline (p) (default: 3).
+        knots_config:
             If an int, it specifies the number of control points per curve (c).
             A uniformly-spaced knot vector will be automatically generated in [-1, 1].
             If a torch.Tensor, it explicitly specifies the knot values. The number
             of control points will be inferred. The tensor should be 1D.
-        normalize_fn (Union[Literal["clamp", "rational"], NormalizationFn]):
-            Normalization method for inputs `u`. (default: "clamp")
-        normalization_scale (float):
-            Scale factor for normalization (default: 1.0).
+        normalize_fn: Normalization method for inputs `u`. (default: "clamp")
+        normalization_scale: Scale factor for normalization (default: 1.0).
 
     """
 
@@ -464,12 +462,11 @@ class BSplineCurveBase(nn.Module):
         """Evaluate a batch of B-spline curves.
 
         Args:
-            u (torch.Tensor): A tensor of parameter values, shape (N, num_curves).
-                              N is the number of samples per curve.
-                              u.shape[1] must match self.num_curves.
+            u: A tensor of parameter values, shape (N, num_curves). N is the number of samples per curve. u.shape[1]
+                must match self.num_curves.
 
         Returns:
-            torch.Tensor: Points on the B-spline curves, shape (N, num_curves, dim).
+            Points on the B-spline curves, shape (N, num_curves, dim).
 
         """
         if u.ndim != 2 or u.shape[1] != self.num_curves:
@@ -496,14 +493,14 @@ def bspline_curves(
     a neural network.
 
     Args:
-        u (torch.Tensor): A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
+        u: A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
             a mini-batch of ``B`` arguments for sampling each of the ``C`` curves.
-        control_points (torch.Tensor): A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
+        control_points: A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
             points each, embedded in ``D``-dimensional space.
-        knots (torch.Tensor, optional): A 1D tensor of size ``M + degree + 1`` representing the spline function's
+        knots: A 1D tensor of size ``M + degree + 1`` representing the spline function's
             knot vector. ``None`` means uniformly-spaced knots between ``-1`` and ``1`` with the not-a-knot boundary
             conditions. (default: ``None``)
-        degree (int): The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
+        degree: The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
 
     Returns:
         A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
@@ -534,14 +531,14 @@ def bspline_embeddings(
     computation for this usecase than `bspline_curves`.
 
     Args:
-        u (torch.Tensor): A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
+        u: A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
             a mini-batch of ``B`` arguments for sampling each of the ``C`` curves.
-        control_points (torch.Tensor): A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
+        control_points: A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
             points each, embedded in ``D``-dimensional space.
-        knots (torch.Tensor, optional): A 1D tensor of size ``M + degree + 1`` representing the spline function's knot
+        knots: A 1D tensor of size ``M + degree + 1`` representing the spline function's knot
             vector. ``None`` means uniformly-spaced knots between ``-1`` and ``1`` with the not-a-knot boundary
             conditions. (default: ``None``)
-        degree (int): The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
+        degree: The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
 
     Returns:
         A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
@@ -562,10 +559,9 @@ def bspline_embeddings(
 class BSplineEmbeddings(BSplineCurveBase):
     """PyTorch module for B-spline embeddings (batch of m curves, no backprop to the input).
 
-    Learnable control points, no backpropagation through the curve parameter `u`.
-    This means gradients are not computed for `u`. This module is useful as an embedding layer in a neural network,
-    where `u` comes from a data-set, and no need to compute gradients w.r.t `u`. This facilitates a slightly faster
-    evaluation of the B-Spline curve.
+    Learnable control points, no backpropagation through the curve parameter `u`. Useful as an embedding layer in a
+    neural network, where `u` comes from a data-set, and no need to compute gradients w.r.t `u`. This facilitates a
+    slightly faster evaluation of the B-Spline curve.
     """
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:

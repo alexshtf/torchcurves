@@ -202,6 +202,18 @@ uv run pytest --cov=torchcurves
 uv run pytest tests/test_bspline.py -v
 ```
 
+
+## Building the docs
+```bash
+# Prepare API docs
+uv run sphinx-apidoc -o doc/source src/torchcurves
+
+# build docs
+cd docs
+make html
+```
+
+
 # Citation
 
 If you use this package in your research, please cite:
