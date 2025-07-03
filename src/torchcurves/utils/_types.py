@@ -3,7 +3,10 @@ from typing import Protocol, Sequence, Union
 import torch
 
 Numeric = Union[int, float]
+"""A number"""
+
 TensorLike = Union[torch.Tensor, Sequence[Numeric]]
+"""A PyTorch tensor or a sequence of numbers"""
 
 
 class NormalizationFn(Protocol):

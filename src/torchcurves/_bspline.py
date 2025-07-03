@@ -4,8 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F  # noqa: N812
 
-from ._normalization import normalization_catalogue
-from .types import NormalizationFn
+from .utils import NormalizationFn, _normalization_catalogue
 
 
 def uniform_augmented_knots(
@@ -52,7 +51,7 @@ def uniform_augmented_knots(
     return torch.cat([head_knots, internal_knots, tail_knots])
 
 
-class BSplineFunction(torch.autograd.Function):
+class _BSplineFunction(torch.autograd.Function):
     ZERO_TOLERANCE = 1e-12
     ONE_TOLERANCE = 1.0 - ZERO_TOLERANCE  # Assuming u is normalized to [0,1] for these constants
 
@@ -89,9 +88,9 @@ class BSplineFunction(torch.autograd.Function):
         max_knot_val = knots[n_control_points]  # This is the start of the last segment of p+1 knots
 
         # For u values at or slightly below the minimum parameter value
-        spans[u <= min_knot_val + BSplineFunction.ZERO_TOLERANCE] = degree
+        spans[u <= min_knot_val + _BSplineFunction.ZERO_TOLERANCE] = degree
         # For u values at or slightly above the maximum parameter value
-        spans[u >= max_knot_val - BSplineFunction.ZERO_TOLERANCE] = n_control_points - 1
+        spans[u >= max_knot_val - _BSplineFunction.ZERO_TOLERANCE] = n_control_points - 1
 
         spans = torch.clamp(spans, min=degree, max=n_control_points - 1)
         return spans
@@ -224,11 +223,11 @@ class BSplineFunction(torch.autograd.Function):
         beta_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
 
         denom_alpha = knots_k_plus_deg - knots_k
-        mask_alpha = torch.abs(denom_alpha) > BSplineFunction.ZERO_TOLERANCE
+        mask_alpha = torch.abs(denom_alpha) > _BSplineFunction.ZERO_TOLERANCE
         alpha_coeffs_batch[mask_alpha] = degree / denom_alpha[mask_alpha]
 
         denom_beta = knots_k_plus_deg_plus_1 - knots_k_plus_1
-        mask_beta = torch.abs(denom_beta) > BSplineFunction.ZERO_TOLERANCE
+        mask_beta = torch.abs(denom_beta) > _BSplineFunction.ZERO_TOLERANCE
         beta_coeffs_batch[mask_beta] = degree / denom_beta[mask_beta]
 
         return alpha_coeffs_batch, beta_coeffs_batch
@@ -246,10 +245,10 @@ class BSplineFunction(torch.autograd.Function):
             return torch.zeros(*u.shape, 1, device=u.device, dtype=u.dtype)
 
         # lower_deg_basis shape: (N, M, degree)
-        lower_deg_basis = BSplineFunction.cox_de_boor(u, knots, spans, degree - 1)
+        lower_deg_basis = _BSplineFunction.cox_de_boor(u, knots, spans, degree - 1)
 
         # alpha, beta have shape (N, M, degree+1)
-        alpha, beta = BSplineFunction.basis_derivative_coefficients(knots, spans, degree)
+        alpha, beta = _BSplineFunction.basis_derivative_coefficients(knots, spans, degree)
 
         # Pad lower_deg_basis's last dimension to (degree+1)
         # Pad (0,1) means add 1 zero to the right: [N0,...,N(deg-1), 0]
@@ -274,9 +273,9 @@ class BSplineFunction(torch.autograd.Function):
 
         n_control_points_per_curve = control_points.shape[1]  # C
 
-        spans = BSplineFunction.find_spans(u, knots, degree, n_control_points_per_curve)  # (N,M)
-        basis_funcs = BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,degree+1)
-        points = BSplineFunction.evaluate_curve(basis_funcs, control_points, spans, degree)  # (N,M,D)
+        spans = _BSplineFunction.find_spans(u, knots, degree, n_control_points_per_curve)  # (N,M)
+        basis_funcs = _BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,degree+1)
+        points = _BSplineFunction.evaluate_curve(basis_funcs, control_points, spans, degree)  # (N,M,D)
 
         ctx.save_for_backward(u, control_points, knots, spans, basis_funcs)
         ctx.degree = degree
@@ -303,7 +302,7 @@ class BSplineFunction(torch.autograd.Function):
 
         # Gradient with respect to u
         # basis_deriv shape: (N, M, degree+1)
-        basis_deriv = BSplineFunction.compute_basis_derivatives(u, knots, spans, degree)
+        basis_deriv = _BSplineFunction.compute_basis_derivatives(u, knots, spans, degree)
 
         clamped_cp_indices = torch.clamp(control_point_indices, 0, n_control_points_per_curve - 1)  # (N,M,deg+1)
 
@@ -401,7 +400,7 @@ class BSplineCurveBase(nn.Module):
         self.degree = degree  # p
 
         if isinstance(normalize_fn, str):
-            normalize_fn_callable = normalization_catalogue.get(normalize_fn)
+            normalize_fn_callable = _normalization_catalogue.get(normalize_fn)
             if normalize_fn_callable is None:
                 raise ValueError(f"Unknown normalization {normalize_fn}")
             self.normalize_fn = normalize_fn_callable
@@ -517,7 +516,7 @@ def bspline_curves(
             n_control_points, degree, dtype=control_points.dtype, device=control_points.device
         )
 
-    return BSplineFunction.apply(
+    return _BSplineFunction.apply(
         u,
         control_points,
         knots,
@@ -555,9 +554,9 @@ def bspline_embeddings(
             n_control_points, degree, dtype=control_points.dtype, device=control_points.device
         )
 
-    spans = BSplineFunction.find_spans(u, knots, degree, n_control_points)  # (N,M)
-    basis_funcs = BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,deg+1)
-    return BSplineFunction.evaluate_curve(basis_funcs, control_points, spans, degree)  # (N,M,D)
+    spans = _BSplineFunction.find_spans(u, knots, degree, n_control_points)  # (N,M)
+    basis_funcs = _BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,deg+1)
+    return _BSplineFunction.evaluate_curve(basis_funcs, control_points, spans, degree)  # (N,M,D)
 
 
 class BSplineEmbeddings(BSplineCurveBase):

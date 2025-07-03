@@ -1,29 +1,30 @@
 import torch
 
-from .types import NormalizationFn, TensorLike
+from ._types import NormalizationFn, TensorLike
 
 
-def rational(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1):
+def rational(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1) -> torch.Tensor:
     r"""Normalize values using the "Legendre Rational Functions" [1] normalization method.
 
     The normalization is performed using the formula:
-    :math::
+    .. math::
+
         x_{\mathrm{norm}} = \frac{x}{\sqrt{\mathrm{scale}^2 + x^2}}
 
     where `scale` is a scaling factor.
 
     Args:
-        x (torch.Tensor): Input tensor to be normalized.
-        scale (float): Scale factor for normalization. (default=1)
-        out_min (float): Lower bound of the output interval (default=-1)
-        out_max (float): Upper bound of the output interval (default=1)
+        x: Input tensor to be normalized.
+        scale: Scale factor for normalization. (default=1)
+        out_min: Lower bound of the output interval (default=-1)
+        out_max: Upper bound of the output interval (default=1)
 
     Returns:
-        torch.Tensor: Normalized tensor.
+        Normalized tensor.
 
     References:
-        [1]: Wang, Z.Q. and Guo, B.Y., 2004. Modified Legendre rational spectral method for the whole line.
-            Journal of Computational Mathematics, pp.457-474.
+        [1]: Wang, Z.Q. and Guo, B.Y., 2004. Modified Legendre rational spectral method for the whole line. \
+             Journal of Computational Mathematics, pp.457-474.
 
     """
     x = torch.as_tensor(x)
@@ -52,7 +53,7 @@ def clamp(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float =
     return torch.clip(x / scale, out_min, out_max)
 
 
-normalization_catalogue: dict[str, NormalizationFn] = {
+_normalization_catalogue: dict[str, NormalizationFn] = {
     "rational": rational,
     "clamp": clamp,
 }

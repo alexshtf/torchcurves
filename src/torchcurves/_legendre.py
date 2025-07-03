@@ -3,8 +3,7 @@ from typing import Literal, Union
 import torch
 import torch.nn as nn
 
-from ._normalization import normalization_catalogue
-from .types import NormalizationFn
+from .utils import NormalizationFn, _normalization_catalogue
 
 
 def _legendre_batch_curves(x, coefs):
@@ -90,7 +89,7 @@ class LegendreCurve(nn.Module):
         self.n_coefficients = self.degree + 1  # C (coefficients per curve)
 
         if isinstance(normalize_fn, str):
-            normalize_fn_from_catalogue = normalization_catalogue.get(normalize_fn)
+            normalize_fn_from_catalogue = _normalization_catalogue.get(normalize_fn)
             if normalize_fn_from_catalogue is None:
                 raise ValueError(f"Unknown normalization {normalize_fn}")
             self.normalize_fn = normalize_fn_from_catalogue
