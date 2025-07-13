@@ -32,6 +32,5 @@ jobs:
 
       - name: Build documentation
         run: |
-          uv run sphinx-apidoc -o doc/source src/torchcurves
           cd doc
           make html
