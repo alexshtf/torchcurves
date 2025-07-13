@@ -48,17 +48,15 @@ input_dim = 2
 intermediate_dim = 5
 num_control_points = 10
 
-config = dict(knots_config=num_control_points)
-# Normalization options are described in the "Advanced features" section below.
 kan = nn.Sequential(
     # layer 1
-    tc.BSplineCurve(input_dim, intermediate_dim, **config),
+    tc.BSplineCurve(input_dim, intermediate_dim, knots_config=num_control_points),
     tc.Sum(dim=-2),
     # layer 2
-    tc.BSplineCurve(intermediate_dim, intermediate_dim, **config),
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots_config=num_control_points),
     tc.Sum(dim=-2),
     # layer 3
-    tc.BSplineCurve(intermediate_dim, 1, **config),
+    tc.BSplineCurve(intermediate_dim, 1, knots_config=num_control_points),
     tc.Sum(dim=-2),
 )
 ```
@@ -74,16 +72,15 @@ input_dim = 2
 intermediate_dim = 5
 degree = 5
 
-config = dict(degree=degree)
 kan = nn.Sequential(
     # layer 1
-    tc.LegendreCurve(input_dim, intermediate_dim, **config),
+    tc.LegendreCurve(input_dim, intermediate_dim, degree=degree),
     tc.Sum(dim=-2),
     # layer 2
-    tc.LegendreCurve(intermediate_dim, intermediate_dim, **config),
+    tc.LegendreCurve(intermediate_dim, intermediate_dim, degree=degree),
     tc.Sum(dim=-2),
     # layer 3
-    tc.LegendreCurve(intermediate_dim, 1, **config),
+    tc.LegendreCurve(intermediate_dim, 1, degree=degree),
     tc.Sum(dim=-2),
 )
 ```
@@ -130,23 +127,23 @@ def erf_clamp(x: Tensor, scale: float = 1, out_min: float = -1, out_max: float =
 tc.BSplineCurve(curve_dim, normalization_fn=erf_clamp, normalization_scale=s)
 ```
 
-## Example: B-Spline KAN with rational normalization
+## Example: B-Spline KAN with clamping
 A KAN based on rationally-scaled B-Spline basis with the default scale of $s=1$:
 ```python
 spline_kan = nn.Sequential([
     # layer 1
-    tc.BSplineCurve(input_dim, intermediate_dim, knot_config=knots, normalization_fn='rational'),
+    tc.BSplineCurve(input_dim, intermediate_dim, knot_config=knots, normalization_fn='clamp'),
     tc.Sum()
     # layer 2
-    tc.BSplineCurve(intermediate_dim, intermediate_dim, knot_config=knots, normalization_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, knot_config=knots, normalization_fn='clamp'),
     tc.Sum()
     # layer 3
-    tc.BSplineCurve(intermediate_dim, 1, knot_config=knots, normalization_fn='rational'),
+    tc.BSplineCurve(intermediate_dim, 1, knot_config=knots, normalization_fn='clamp'),
     tc.Sum()
 ])
 ```
 
-### Legendre KAN with rational normalization
+### Legendre KAN with rational clamping
 ```python
 import torchcurves as tc
 from torch import nn
@@ -155,17 +152,17 @@ input_dim = 2
 intermediate_dim = 5
 degree = 5
 
-config = dict(degree=degree, normalize_fn="rational")
+config = dict(degree=degree, normalize_fn="clamp")
 kan = nn.Sequential(
     # layer 1
     tc.LegendreCurve(input_dim, intermediate_dim, **config),
-    tc.Sum(dim=-2),
+    tc.Sum(),
     # layer 2
     tc.LegendreCurve(intermediate_dim, intermediate_dim, **config),
-    tc.Sum(dim=-2),
+    tc.Sum(),
     # layer 3
     tc.LegendreCurve(intermediate_dim, 1, **config),
-    tc.Sum(dim=-2),
+    tc.Sum(),
 )
 ```
 
@@ -215,9 +212,6 @@ uv run pytest tests/test_bspline.py -v
 ## Building the docs
 ```bash
 # Prepare API docs
-uv run sphinx-apidoc -o doc/source src/torchcurves
-
-# build docs
 cd docs
 make html
 ```
