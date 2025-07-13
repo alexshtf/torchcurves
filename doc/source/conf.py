@@ -24,14 +24,18 @@ author = "Alex Shtoff"
 extensions = [
     "sphinx.ext.mathjax",
     "sphinx.ext.autodoc",
+    "sphinx.ext.autosummary",
     "sphinx.ext.napoleon",
-    "sphinx.ext.viewcode",
     "myst_parser",
     "sphinx_autodoc_typehints",
+    "nbsphinx",
 ]
 
+
+napoleon_google_docstring = True
+napoleon_numpy_docstring = False
+
 autodoc_typehints = "description"  # rely on PEP-484 annotations
-katex_prerender = True
 
 templates_path = ["_templates"]
 exclude_patterns = []

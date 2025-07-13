@@ -5,7 +5,18 @@ TODO:
    - include readme.md file correctly.
    - Learn how AutoSummary works, and do it.
 
-.. toctree::
-   :caption: API Doc
 
-   modules
+.. toctree::
+   :caption: Documentation
+   :maxdepth: 2
+
+   overview
+   examples
+
+
+.. toctree::
+   :caption: API
+   :maxdepth: 1
+
+   torchcurves
+   torchcurves.utils

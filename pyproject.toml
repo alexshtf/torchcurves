@@ -45,6 +45,9 @@ doc = [
     "sphinx-autobuild>=2024.10.3",
     "sphinxext-opengraph>=0.10.0",
     "pydata-sphinx-theme>=0.16.1",
+    "ipython>=8.18.1",
+    "nbsphinx>=0.9.7",
+    "pandoc>=2.4",
 ]
 examples = [
     "ipykernel>=6.29.0",

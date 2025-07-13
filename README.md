@@ -160,17 +160,15 @@ kan = nn.Sequential(
 
 ### Further examples
 In the `examples` directory you can find additional examples demonstrating this library:
-- [draw_bspline.ipynb](examples/draw_bspline.ipynb) plot a 2D B-Spline curve using 2D control points,
+- [draw_bspline.ipynb](doc/source/examples/draw_bspline.ipynb) plot a 2D B-Spline curve using 2D control points,
 showing that the library indeed does what is intended.
-- [draw_legendre.ipynb](examples/draw_legendre.ipynb) plot 2D Legendre curves, showing their oscilatory nature.
-- [kan_bspline_rat.ipynb](exampels/kan_bspline_rat.ipynb) / [kan_legendre_rat.ipynb](examples/kan_legendre_rat.ipynb)
+- [draw_legendre.ipynb](doc/source/examples/draw_legendre.ipynb) plot 2D Legendre curves, showing their oscilatory nature.
+- [kan_bspline_rat.ipynb](doc/source/exampels/kan_bspline_rat.ipynb) / [kan_legendre_rat.ipynb](examples/kan_legendre_rat.ipynb)
 show Kolmogorov-Arnold Networks [1] using either B-Spline or Legendre parametrization of the learned activation functions,
 with rational normalization.
-- [factorization_machine.ipynb](examples/factorization_machine.ipynb) Factorization Machine whose embedding vectors
+- [factorization_machine.ipynb](doc/source/examples/factorization_machine.ipynb) Factorization Machine whose embedding vectors
 come from either Legendre or B-Spline curves, as shown in [4,5]
-- [transformer_uniform_curves.ipynb](examples/transformer_uniform_curves.ipynb) a transformer [2,3] model applied for tabular
-data whose embeddings come from either Legendre or B-Spline curves.
-- [transformer_mixed_curves.ipynb](examples/transformer_mixed_curves.ipynb) a transformed model applied for tabular
+- [transformer_mixed_curves.ipynb](doc/source/examples/transformer_mixed_curves.ipynb) a transformed model applied for tabular
 data whose embeddings come from a mix of both Legendre and B-Spline curves.
 
 # Development
