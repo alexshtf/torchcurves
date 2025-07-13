@@ -96,18 +96,8 @@ The curves we provide here typically rely on their inputs to lie in a compact in
 inputs need to be normalized to this interval. We provide two simple out-of-the-box normalizations strategies described
 below.
 
-## Clamping
-This is the default strategy - the inputs are simply clipped to [-1, 1] after scaling, i.e.
-```math
-x \to \max(\min(1, x / s), -1)
-```
-In Python it looks like this:
-```python
-tc.BSplineCurve(curve_dim, normalization_fn='clamp', normalization_scale=s)
-```
-
 ## Rational scaling
-This strategy computes
+This is the default strategy - this strategy computes
 ```math
 x \to \frac{x}{\sqrt{s^2 + x^2}},
 ```
@@ -117,6 +107,27 @@ and is based on the paper
 In Python it looks like this:
 ```python
 tc.BSplineCurve(curve_dim, normalization_fn='rational', normalization_scale=s)
+```
+
+
+## Clamping
+The inputs are simply clipped to [-1, 1] after scaling, i.e.
+```math
+x \to \max(\min(1, x / s), -1)
+```
+In Python it looks like this:
+```python
+tc.BSplineCurve(curve_dim, normalization_fn='clamp', normalization_scale=s)
+```
+
+## Custom normalization
+Provide a custom function that maps its input to the designated range after scaling. Example:
+```python
+def erf_clamp(x: Tensor, scale: float = 1, out_min: float = -1, out_max: float = 1) -> Tensor:
+    mapped = torch.special.erf(x / scale)
+    return ((mapped + 1) * (out_max - out_min)) / 2 + out_min
+
+tc.BSplineCurve(curve_dim, normalization_fn=erf_clamp, normalization_scale=s)
 ```
 
 ## Example: B-Spline KAN with rational normalization

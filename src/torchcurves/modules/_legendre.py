@@ -27,7 +27,7 @@ class LegendreCurve(nn.Module):
         degree: Degree of the Legendre polynomial basis (shared by all curves).
                       The number of coefficients per curve will be `degree + 1`.
         normalize_fn:
-            Normalization method for inputs `u`. (default: "clamp")
+            Normalization method for inputs `u`. (default: "rational")
         normalization_scale (float):
             Scale factor for normalization (default: 1.0).
 
@@ -38,7 +38,7 @@ class LegendreCurve(nn.Module):
         num_curves: int,
         dim: int,
         degree: int,
-        normalize_fn: Union[Literal["clamp", "rational"], NormalizationFn] = "clamp",
+        normalize_fn: Union[Literal["clamp", "rational"], NormalizationFn] = "rational",
         normalization_scale: float = 1.0,
     ):
         super().__init__()
