@@ -1,5 +1,5 @@
-torchcurves package
-===================
+torchcurves
+===========
 
 .. automodule:: torchcurves
 .. automodule:: torchcurves.modules

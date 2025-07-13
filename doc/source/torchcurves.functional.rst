@@ -1,5 +1,5 @@
-torchcurves.functional package
-==============================
+torchcurves.functional
+======================
 
 .. currentmodule:: torchcurves.functional
 
