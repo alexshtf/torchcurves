@@ -3,4 +3,4 @@ API Documentation
 
 .. toctree::
    torchcurves
-   torchcurves.utils
+   torchcurves.functional
