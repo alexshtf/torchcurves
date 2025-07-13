@@ -5,7 +5,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torchcurves import LegendreCurve, legendre_curves
+from torchcurves import LegendreCurve
+from torchcurves.functional import legendre_curves
 
 
 @pytest.mark.parametrize("num_curves", [1, 2, 5])

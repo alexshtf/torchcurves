@@ -1,6 +1,6 @@
 import torch
 
-from ._types import NormalizationFn, TensorLike
+from ..types import TensorLike
 
 
 def rational(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1) -> torch.Tensor:
@@ -31,7 +31,7 @@ def rational(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: floa
     return torch.clip(out_scaled, out_min, out_max)
 
 
-def clamp(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1):
+def clamp(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1) -> torch.Tensor:
     r"""Clamp values in a tensor to a specified range.
 
     The function clamps the values of the input tensor `x` to be within the output range, after scaling by the
@@ -49,9 +49,3 @@ def clamp(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float =
     """
     x = torch.as_tensor(x)
     return torch.clip(x / scale, out_min, out_max)
-
-
-_normalization_catalogue: dict[str, NormalizationFn] = {
-    "rational": rational,
-    "clamp": clamp,
-}

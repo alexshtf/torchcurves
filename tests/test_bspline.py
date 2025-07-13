@@ -4,7 +4,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torchcurves import BSplineCurve, bspline_curves
+from torchcurves import BSplineCurve
+from torchcurves.functional import bspline_curves
 
 
 class TestBSplineFunction(unittest.TestCase):

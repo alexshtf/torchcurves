@@ -1,9 +1,7 @@
 TorchCurves documentation
 =========================
 TODO:
-   - add notebooks using nbsphinx
    - include readme.md file correctly.
-   - Learn how AutoSummary works, and do it.
 
 
 .. toctree::
@@ -19,4 +17,4 @@ TODO:
    :maxdepth: 1
 
    torchcurves
-   torchcurves.utils
+   torchcurves.functional
