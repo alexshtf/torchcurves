@@ -8,12 +8,7 @@ TorchCurves documentation
    torchcurves.functional
 
 .. toctree::
-   :caption: Example notebooks
-   :maxdepth: 1
+   :caption: Examples
+   :maxdepth: 2
 
-   examples/draw_bspline
-   examples/draw_legendre
-   examples/kan_bspline_rat
-   examples/kan_legendre_rat
-   examples/factorization_machine
-   examples/transformer_mixed_curves
+   example_notebooks
