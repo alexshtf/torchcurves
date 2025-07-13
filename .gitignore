@@ -60,3 +60,6 @@ Thumbs.db
 # UV
 .python-version
 .ruff_cache
+
+# Sphinx
+doc/source/generated
