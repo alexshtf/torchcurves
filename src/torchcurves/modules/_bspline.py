@@ -9,26 +9,7 @@ from ._normalization import _normalization_catalogue
 
 
 class BSplineCurveBase(nn.Module):
-    r"""Base PyTorch module for B-spline curves, supporting a batch of multiple curves.
-
-    The learnable parameters are the control points for a batch of `num_curves`.
-    Each curve in the batch shares the same degree and knot configuration.
-    The input parameter `u` to the forward method is normalized to the range [-1, 1]
-    (or the range of the knots if specified differently) using the specified normalization strategy.
-
-    Args:
-        num_curves: Number of B-spline curves to define in this module (m).
-        dim: Dimension of each curve's output points (d).
-        degree: Degree of the B-spline (p) (default: 3).
-        knots_config:
-            If an int, it specifies the number of control points per curve (c).
-            A uniformly-spaced knot vector will be automatically generated in [-1, 1].
-            If a torch.Tensor, it explicitly specifies the knot values. The number
-            of control points will be inferred. The tensor should be 1D.
-        normalize_fn: Normalization method for inputs `u`. (default: "rational")
-        normalization_scale: Scale factor for normalization (default: 1.0).
-
-    """
+    """Base PyTorch module for B-spline curves, supporting a batch of multiple curves."""
 
     knots: torch.Tensor  # explicit annotation for type-checking
 
@@ -142,11 +123,30 @@ class BSplineCurveBase(nn.Module):
 
 
 class BSplineEmbeddings(BSplineCurveBase):
-    """PyTorch module for B-spline embeddings (batch of m curves, no backprop to the input).
+    """Embeddings layer based on B-Spline curves.
 
-    Learnable control points, no backpropagation through the curve parameter `u`. Useful as an embedding layer in a
-    neural network, where `u` comes from a data-set, and no need to compute gradients w.r.t `u`. This facilitates a
-    slightly faster evaluation of the B-Spline curve.
+    Useful as the first layer in a neural network, where the input comes from a data-set.
+
+    The learnable parameters are the control points of `M` curves in `D`-dimensional space.
+    Each curve in the batch shares the same degree and knot configuration.
+    The input parameter `u` to the forward method is normalized to the range [-1, 1]
+    (or the range of the knots if specified differently) using the specified normalization strategy.
+
+    Args:
+        num_curves: Number of B-spline curves to define in this module (`M`).
+        dim: Dimension of each curve's output points (`D`).
+        degree: Degree of the B-spline (default: 3).
+        knots_config:
+            If an int, it specifies the number of control points per curve (c).
+            A uniformly-spaced knot vector will be automatically generated in [-1, 1].
+            If a torch.Tensor, it explicitly specifies the knot values. The number
+            of control points will be inferred. The tensor should be 1D.
+        normalize_fn: Normalization method for inputs `u`. (default: "rational")
+        normalization_scale: Scale factor for normalization (default: 1.0).
+
+    Note:
+        Assumes the input of this layer is constant, and doesn't require computing gradients.
+
     """
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
@@ -154,9 +154,28 @@ class BSplineEmbeddings(BSplineCurveBase):
 
 
 class BSplineCurve(BSplineCurveBase):
-    """PyTorch module for a batch of B-Spline curves.
+    """B-Spline curves layer that allows back-propagating through its input.
 
-    Learnable control points, and backpropagation through the curve parameter `u`.
+    The learnable parameters are the control points of `M` curves in `D`-dimensional space.
+    Each curve in the batch shares the same degree and knot configuration.
+    The input parameter `u` to the forward method is normalized to the range [-1, 1]
+    (or the range of the knots if specified differently) using the specified normalization strategy.
+
+    Args:
+        num_curves: Number of B-spline curves to define in this module (`M`).
+        dim: Dimension of each curve's output points (`D`).
+        degree: Degree of the B-spline (default: 3).
+        knots_config:
+            If an int, it specifies the number of control points per curve (c).
+            A uniformly-spaced knot vector will be automatically generated in [-1, 1].
+            If a torch.Tensor, it explicitly specifies the knot values. The number
+            of control points will be inferred. The tensor should be 1D.
+        normalize_fn: Normalization method for inputs `u`. (default: "rational")
+        normalization_scale: Scale factor for normalization (default: 1.0).
+
+    Note:
+        Assumes the input of this layer is constant, and doesn't require computing gradients.
+
     """
 
     def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
