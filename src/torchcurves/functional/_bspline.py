@@ -23,11 +23,11 @@ def uniform_augmented_knots(
 
     Returns:
         torch.Tensor: A 1D tensor of knots consisting of head knots, uniformly spaced
-                      internal knots, and tail knots, all in the range [-1.0, 1.0].
+            internal knots, and tail knots, all in the range [-1.0, 1.0].
 
     Raises:
         ValueError: If the number of control points is less than (degree + 1), indicating
-                    that there are not enough points to form a valid knot vector.
+            that there are not enough points to form a valid knot vector.
 
     """
     if n_control_points < 1 + degree:
@@ -357,18 +357,19 @@ def bspline_curves(
     a neural network.
 
     Args:
-        u: A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
-            a mini-batch of ``B`` arguments for sampling each of the ``C`` curves.
-        control_points: A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
-            points each, embedded in ``D``-dimensional space.
-        knots: A 1D tensor of size ``M + degree + 1`` representing the spline function's
-            knot vector. ``None`` means uniformly-spaced knots between ``-1`` and ``1`` with the not-a-knot boundary
+        u: A tensor of size :math:`(B, C)` of values between ``knots.min()`` and ``knots.max()``, representing
+            a mini-batch of :math:`B` arguments for sampling each of the :math:`C` curves.
+        control_points: A tensor of size :math:`(M, C, D)` describing :math:`M` curves with :math:`C` control
+            points each, embedded in :math:`\mathbb{R}^D`.
+        knots: A 1D tensor of size :math:`M + P + 1` representing the spline function's
+            knot vector, where :math:`P` is the degree of the piecewise polynomials defining the spline function.
+            ``None`` means uniformly-spaced knots in :math:`[-1, 1]` with the not-a-knot boundary
             conditions. (default: ``None``)
-        degree: The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
+        degree: The degree :math:`P` of the B-Spline function. (default: ``3`` meaning a cubic spline)
 
     Returns:
-        A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
-        D-dimensional space.
+        A tensor of size :math:`(B, C, D)`, representing a mini-batch of size :math:`B`, corresponding to samples from
+        :math:`C` curves in :math:`\mathbb{R}^D`.
 
     """
     if knots is None:
@@ -392,21 +393,22 @@ def bspline_embeddings(
 
     This function allow back-propagating only through the control points and the argument. Useful as the input layer
     in a neural network, whose arguments come from a data-set that requires no back-prop, while allowing a cheaper
-    computation for this usecase than `bspline_curves`.
+    computation for this usecase than :func:`bspline_curves`.
 
     Args:
-        u: A tensor of size B x C of values between ``knots.min()`` and ``knots.max()``, representing
-            a mini-batch of ``B`` arguments for sampling each of the ``C`` curves.
-        control_points: A tensor of size ``M x C x D`` describing ``M`` curves with ``C`` control
-            points each, embedded in ``D``-dimensional space.
-        knots: A 1D tensor of size ``M + degree + 1`` representing the spline function's knot
-            vector. ``None`` means uniformly-spaced knots between ``-1`` and ``1`` with the not-a-knot boundary
+        u: A tensor of size :math:`(B, C)` of values between ``knots.min()`` and ``knots.max()``, representing
+            a mini-batch of :math:`B` arguments for sampling each of the :math:`C` curves.
+        control_points: A tensor of size :math:`(M, C, D)` describing :math:`M` curves with :math:`C` control
+            points each, embedded in :math:`\mathbb{R}^D`.
+        knots: A 1D tensor of size :math:`M + P + 1` representing the spline function's
+            knot vector, where :math:`P` is the degree of the piecewise polynomials defining the spline function.
+            ``None`` means uniformly-spaced knots in :math:`[-1, 1]` with the not-a-knot boundary
             conditions. (default: ``None``)
-        degree: The degree of the B-Spline function. (default: ``3`` meaning a cubic spline)
+        degree: The degree :math:`P` of the B-Spline function. (default: ``3`` meaning a cubic spline)
 
     Returns:
-        A tensor of size B x C x D, representing a mini-batch of size B, corresponding to samples from C curves in
-        D-dimensional space.
+        A tensor of size :math:`(B, C, D)`, representing a mini-batch of size :math:`B`, corresponding to samples from
+        :math:`C` curves in :math:`\mathbb{R}^D`.
 
     """
     n_control_points = control_points.shape[1]

@@ -6,7 +6,11 @@ from ..types import TensorLike
 def rational(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float = 1) -> torch.Tensor:
     r"""Normalize values using the "Legendre Rational Functions" [1] normalization method.
 
-    The normalization is performed with the formula :math:`x_{\mathrm{norm}} = \frac{x}{\sqrt{\mathrm{scale}^2 + x^2}}`,
+    The normalization is performed with the formula
+
+    .. math::
+        x_{\mathrm{norm}} = \frac{x}{\sqrt{\mathrm{scale}^2 + x^2}},
+
     where `scale` is a scaling factor.
 
     Args:
@@ -21,7 +25,7 @@ def rational(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: floa
     **References**
 
     [1] Wang, Z.Q. and Guo, B.Y., 2004.
-    _Modified Legendre rational spectral method for the whole line._
+    *Modified Legendre rational spectral method for the whole line.*
     Journal of Computational Mathematics, pp.457-474.
 
     """
@@ -35,7 +39,10 @@ def clamp(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float =
     r"""Clamp values in a tensor to a specified range.
 
     The function clamps the values of the input tensor `x` to be within the output range, after scaling by the
-    `scale` factor.
+    `scale` factor, by the formula:
+
+    .. math::
+        x_{\mathrm{norm}} = \min(1, \max(0, x / \mathrm{scale}))
 
     Args:
         x: Input tensor to be normalized.
@@ -44,7 +51,7 @@ def clamp(x: TensorLike, scale: float = 1, out_min: float = -1, out_max: float =
         out_max: Upper bound of the output interval (default=1)
 
     Returns:
-        Clamped tensor.
+        Normalized tensor.
 
     """
     x = torch.as_tensor(x)

@@ -2,15 +2,19 @@ import torch
 
 
 def legendre_curves(x: torch.Tensor, coefficients: torch.Tensor) -> torch.Tensor:
-    """Evaluate curves parametrized by Legendre polynomials.
+    r"""Evaluate curves parametrized by Legendre polynomials.
 
     Args:
-        coefficients: A tensor of size (N, C, M) of curve coefficients, of a set of C polynomial curves in M dimensions
-        of degree N-1, represented in the Legendre basis.
-        x: Batch of size (B, C), where x[:, j] is the batch of inputs for the j-th curve in the batch.
+        coefficients: A tensor of size :math:`(N, C, D)` of curve coefficients, of a set of :math:`C` polynomial curves
+            in :math:`\mathbb{R}^D` of degree :math:`N-1`, represented in the Legendre basis.
+        x: Batch of size :math:`(B, C)`, where ``x[:, j]`` is the batch of inputs for the j-th curve in the batch.
 
     Returns:
-        points: Evaluated points on the curves, shape (B, C, M).
+        Evaluated points on the curves, shape :math:`(B, C, D)`.
+
+    Note:
+        Uses the Clenshaw recursive algorithm, and thus requires :math:`O(N)` time. Implementation is vectorized along
+        the :math:`B` and :math:`D` dimensions, but the algorithm requires a loop over the polynomial degree.
 
     """
     n, c, m = coefficients.shape  # n - number of coefficients, c - number of curves, m - curve dimension

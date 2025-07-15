@@ -100,11 +100,11 @@ class BSplineCurveBase(nn.Module):
         """Evaluate a batch of B-spline curves.
 
         Args:
-            u: A tensor of parameter values, shape (N, num_curves). N is the number of samples per curve. u.shape[1]
-                must match self.num_curves.
+            u: Parameter values of size :math:`(B, C)`, where :math:`B` is the mini-batch size, and `C` is the number
+                of curves, and must be equal to `self.num_curves`.
 
         Returns:
-            Points on the B-spline curves, shape (N, num_curves, dim).
+            Points on the B-spline curves of shape :math:`(B, C, D)`.
 
         """
         if u.ndim != 2 or u.shape[1] != self.num_curves:
@@ -123,29 +123,30 @@ class BSplineCurveBase(nn.Module):
 
 
 class BSplineEmbeddings(BSplineCurveBase):
-    """Embeddings layer based on B-Spline curves.
+    r"""Embeddings layer based on B-Spline curves.
 
     Useful as the first layer in a neural network, where the input comes from a data-set.
 
-    The learnable parameters are the control points of `M` curves in `D`-dimensional space.
-    Each curve in the batch shares the same degree and knot configuration.
-    The input parameter `u` to the forward method is normalized to the range [-1, 1]
-    (or the range of the knots if specified differently) using the specified normalization strategy.
+    The learnable parameters are the control points of :math:`M` curves in :math:`\mathbb{R}^D`.
+    All curves share the same degree and knot configuration.
+
+    The input of this layer normalized to the range :math:`[-1, 1]` (or the range of the knots if specified differently)
+    using the specified normalization strategy.
 
     Args:
-        num_curves: Number of B-spline curves to define in this module (`M`).
-        dim: Dimension of each curve's output points (`D`).
+        num_curves: Number of B-spline curves to define in this module (:math:`M`).
+        dim: Dimension of each curve's output points (:math:`D`).
         degree: Degree of the B-spline (default: 3).
         knots_config:
-            If an int, it specifies the number of control points per curve (c).
+            If an int, it specifies the number of control points per curve (:math:`C`).
             A uniformly-spaced knot vector will be automatically generated in [-1, 1].
             If a torch.Tensor, it explicitly specifies the knot values. The number
             of control points will be inferred. The tensor should be 1D.
-        normalize_fn: Normalization method for inputs `u`. (default: "rational")
+        normalize_fn: Normalization method layer's input. (default: "rational")
         normalization_scale: Scale factor for normalization (default: 1.0).
 
     Note:
-        Assumes the input of this layer is constant, and doesn't require computing gradients.
+        Assumes the input of this layer is not learnable, and thus doesn't require computing gradients.
 
     """
 
@@ -154,27 +155,25 @@ class BSplineEmbeddings(BSplineCurveBase):
 
 
 class BSplineCurve(BSplineCurveBase):
-    """B-Spline curves layer that allows back-propagating through its input.
+    r"""B-Spline curves layer that allows back-propagating through its input.
 
-    The learnable parameters are the control points of `M` curves in `D`-dimensional space.
-    Each curve in the batch shares the same degree and knot configuration.
-    The input parameter `u` to the forward method is normalized to the range [-1, 1]
-    (or the range of the knots if specified differently) using the specified normalization strategy.
+    The learnable parameters are the control points of :math:`M` curves in :math:`\mathbb{R}^D`.
+    All curves share the same degree and knot configuration.
+
+    The input of this layer normalized to the range :math:`[-1, 1]` (or the range of the knots if specified differently)
+    using the specified normalization strategy.
 
     Args:
-        num_curves: Number of B-spline curves to define in this module (`M`).
-        dim: Dimension of each curve's output points (`D`).
+        num_curves: Number of B-spline curves to define in this module (:math:`M`).
+        dim: Dimension of each curve's output points (:math:`D`).
         degree: Degree of the B-spline (default: 3).
         knots_config:
-            If an int, it specifies the number of control points per curve (c).
+            If an int, it specifies the number of control points per curve (:math:`C`).
             A uniformly-spaced knot vector will be automatically generated in [-1, 1].
             If a torch.Tensor, it explicitly specifies the knot values. The number
             of control points will be inferred. The tensor should be 1D.
-        normalize_fn: Normalization method for inputs `u`. (default: "rational")
+        normalize_fn: Normalization method layer's input. (default: "rational")
         normalization_scale: Scale factor for normalization (default: 1.0).
-
-    Note:
-        Assumes the input of this layer is constant, and doesn't require computing gradients.
 
     """
 

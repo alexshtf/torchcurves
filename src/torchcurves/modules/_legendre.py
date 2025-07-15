@@ -11,8 +11,9 @@ from ._normalization import _normalization_catalogue
 class LegendreCurve(nn.Module):
     r"""PyTorch module for a batch of parametrized curves using Legendre polynomial basis.
 
-    The learnable parameters are the control points (coefficients) of the Legendre series for each curve.
-    All curves share the same degree. The input parameter `u` to the forward method is normalized to [-1, 1].
+    The learnable parameters are the control points (coefficients) of the
+    `Legendre series <https://en.wikipedia.org/wiki/Legendre_polynomials>`_ for each curve.
+    All curves share the same degree. The input of this layer is normalized to :math:`[-1, 1]`.
     Each curve is:
 
     .. math::
@@ -22,12 +23,12 @@ class LegendreCurve(nn.Module):
     where :math:`P_k` is the :math:`k`-th Legendre polynomial.
 
     Args:
-        num_curves: Number of Legendre curves to define (M).
-        dim: Dimension of each curve's output points (D).
+        num_curves: Number of Legendre curves to define (:math:`M`).
+        dim: Dimension of each curve's output points (:math:`D`).
         degree: Degree of the Legendre polynomial basis (shared by all curves).
-                      The number of coefficients per curve will be `degree + 1`.
+            The number of coefficients per curve will be `degree + 1`.
         normalize_fn:
-            Normalization method for inputs `u`. (default: "rational")
+            Normalization method this layer's input. (default: "rational")
         normalization_scale (float):
             Scale factor for normalization (default: 1.0).
 
@@ -75,13 +76,11 @@ class LegendreCurve(nn.Module):
         """Evaluate the batch of Legendre curves.
 
         Args:
-            u (torch.Tensor): A 2D tensor of parameter values, shape (N, num_curves).
-                              N is the number of samples per curve.
-                              u.shape[1] must match self.num_curves.
-                              Values will be normalized to [-1, 1].
+            u: Parameter values of size :math:`(B, C)`, where :math:`B` is the mini-batch size, and `C` is the number
+                of curves, and must be equal to `self.num_curves`.
 
         Returns:
-            torch.Tensor: Points on the Legendre curves, shape (N, num_curves, dim).
+            Points on the Legendre curves of shape :math:`(B, C, D)`.
 
         """
         if u.ndim != 2 or u.shape[1] != self.num_curves:
