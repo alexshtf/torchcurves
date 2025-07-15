@@ -492,13 +492,15 @@ class TestBSplineCurveModule(unittest.TestCase):
         self.assertEqual(points.device, self.device)
         self.assertEqual(points.dtype, self.default_dtype)
 
-    def test_boundary_interpolation(self):
+    def test_boundary_interpolation_with_clamp_normalization(self):
         num_curves = 1
         dim = 2
         degree = 3
         n_cps_per_curve = 5
         module = (
-            BSplineCurve(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
+            BSplineCurve(
+                num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve, normalize_fn="clamp"
+            )
             .to(self.device)
             .to(self.default_dtype)
         )  # Knots are [-1,1]
