@@ -1,0 +1,87 @@
+[project]
+name = "torchcurves"
+version = "0.1.0"
+description = "PyTorch module for differentiable parametric curves with learnable coefficients"
+authors = [
+    { name = "Alex Shtoff", email = "alex.shtf@gmail.com" }
+]
+readme = "README.md"
+license = { text = "Apache 2.0" }
+requires-python = ">=3.9"
+keywords = ["pytorch", "bspline", "curves", "differentiable", "deep-learning", "geometric-deep-learning"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Intended Audience :: Developers",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.9",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Artificial Intelligence",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+dependencies = [
+    "torch>=1.10.0",
+]
+
+[dependency-groups]
+dev = [
+    "numpy>=1.17.0",
+    "pytest>=7.0.0",
+    "pytest-cov>=4.0.0",
+    "black>=23.0.0",
+    "ruff>=0.1.0",
+    "mypy>=1.0.0",
+    "pre-commit>=3.0.0",
+]
+doc = [
+    "sphinx>=7.4.7",
+    "myst-parser>=3.0.1",
+    "sphinx-autodoc-typehints>=2.3.0",
+    "sphinx-copybutton>=0.5.2",
+    "sphinx-autobuild>=2024.10.3",
+    "sphinxext-opengraph>=0.10.0",
+    "pydata-sphinx-theme>=0.16.1",
+    "ipython>=8.18.1",
+    "nbsphinx>=0.9.7",
+    "pandoc>=2.4",
+]
+examples = [
+    "ipykernel>=6.29.0",
+    "matplotlib>=3.8.0",
+    "ipywidgets>=8.1.7",
+    "kagglehub[pandas-datasets]>=0.3.12",
+    "pandas>=2.3.0",
+    "scikit-learn>=1.6.1",
+]
+
+[project.urls]
+Homepage = "https://github.com/alexshtf/torchcurves"
+Repository = "https://github.com/alexshtf/torchcurves"
+Issues = "https://github.com/alexshtf/torchcurves/issues"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/torchcurves"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+python_classes = "Test*"
+python_functions = "test_*"
+addopts = "-v --cov=torch_bspline --cov-report=term-missing"
+
+[tool.ruff]
+line-length = 120
+
+[tool.ruff.lint]
+select = [ "E", "W", "F", "I", "B", "C4", "N", "D", "SIM",]
+extend-select = [ "RUF100",]
+ignore = [ "E101", "D100", "D101", "D102", "D103", "D104", "D105", "D106", "D107", "B024",]
+fixable = [ "ALL",]
