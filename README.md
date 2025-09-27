@@ -1,6 +1,6 @@
 # torchcurves
 
-![logo](logo.png)
+![torchcurves logo](https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo.png)
 
 A PyTorch module for differentiable parametric curves with learnable coefficients,
 such as a B-Spline curve with learnable control points.
