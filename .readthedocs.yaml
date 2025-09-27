@@ -17,10 +17,11 @@ sphinx:
 # Optionally, but recommended,
 # declare the Python requirements required to build your documentation
 # See https://docs.readthedocs.io/en/stable/guides/reproducible-builds.html
-install:
-  - method: uv
-    path: .
-    extra_requirements:
-      - doc
-      - dev
-      - examples
+python:
+  install:
+    - method: uv
+      path: .
+      extra_requirements:
+        - doc
+        - dev
+        - examples
