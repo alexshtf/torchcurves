@@ -1,6 +1,6 @@
 [project]
 name = "torchcurves"
-version = "0.1.0"
+version = "0.1.1"
 description = "PyTorch module for differentiable parametric curves with learnable coefficients"
 authors = [
     { name = "Alex Shtoff", email = "alex.shtf@gmail.com" }
