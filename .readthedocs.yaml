@@ -8,24 +8,12 @@ version: 2
 build:
   os: ubuntu-24.04
   tools:
-    python: "3.13"
+    python: "3.12"
+  commands:
+    - curl -LsSf https://astral.sh/uv/install.sh | sh
+    - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" ~/.local/bin/uv sync --frozen --group doc dev examples
 
-# Build documentation in the "docs/" directory with Sphinx
+# Build documentation in the "doc/" directory with Sphinx
 sphinx:
-   configuration: doc/source/conf.py
+  configuration: doc/source/conf.py
 
-jobs:
-    # Install uv via asdf
-    pre_create_environment:
-      - asdf plugin add uv
-      - asdf install uv latest
-      - asdf global uv latest
-
-    # Create the exact venv path RTD expects
-    create_environment:
-      - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
-
-    # Install your project + docs extras using uv
-    install:
-      # If you use uv's lockfile, keep --frozen. Remove it if you don't commit uv.lock.
-      - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --frozen --group doc dev examples
