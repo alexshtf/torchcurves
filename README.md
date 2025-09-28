@@ -10,8 +10,9 @@ seamlessly with PyTorch's autograd system. It streamlines use cases such as
 continuous numerical embeddings for factorization machines [6] or transformers
 [2,3], Kolmogorov-Arnold networks [1], or path planning in robotics.
 
-Full documentation is available at
-[torchcurves.readthedocs.io](https://torchcurves.readthedocs.io/en/latest/).
+## Docs
+- [Documentation site](https://torchcurves.readthedocs.io/en/latest/).
+- [Example notebooks](https://torchcurves.readthedocs.io/en/latest/example_notebooks.html) for you to try our
 
 ## Features
 
