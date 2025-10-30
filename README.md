@@ -1,14 +1,27 @@
-# torchcurves
+<p align="center">
+<picture>
+    <img width="20%" alt="Torchcurves Logo" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo.png">
+</picture>
+</p>
 
-![torchcurves logo](https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo.png)
+
+<div align="center">
+  
+[![torchcurves-backend](https://github.com/alexshtf/torchcurves/actions/workflows/tests.yml/badge.svg)](https://github.com/alexshtf/torchcurves/actions/workflows/test.yml)
+[![PyPI downloads](https://img.shields.io/pypi/dm/torchcurves)](https://pypi.org/project/torchcurves/)
+[![PyPI](https://img.shields.io/pypi/v/torchcurves)](https://pypi.org/project/torchcurves/)
+![Python version](https://img.shields.io/badge/python-3.9+-important)
+
+</div>
+
 
 A PyTorch module for differentiable parametric curves with learnable coefficients,
 such as a B-Spline curve with learnable control points.
 
-This package provides fully differentiable curve implementations that integrate
+Fully differentiable curve implementations that integrate
 seamlessly with PyTorch's autograd system. It streamlines use cases such as
-continuous numerical embeddings for factorization machines [6] or transformers
-[2,3], Kolmogorov-Arnold networks [1], or path planning in robotics.
+continuous numerical embeddings for embedding-based models (e.g. factorization machines [6] or transformers
+[2,3]), Kolmogorov-Arnold networks [1], or path planning in robotics.
 
 ## Docs
 - [Documentation site](https://torchcurves.readthedocs.io/en/latest/).
