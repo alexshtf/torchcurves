@@ -30,7 +30,8 @@ def uniform_augmented_knots(
             that there are not enough points to form a valid knot vector.
 
     """
-    if n_control_points < 1 + degree:
+    num_internal_knots = n_control_points - degree - 1
+    if num_internal_knots < 0:
         raise ValueError("Not enough control points for the given degree to form internal knots.")
 
     # Generates knots in [-1, 1]
@@ -39,13 +40,11 @@ def uniform_augmented_knots(
     head_knots = torch.full((degree + 1,), k_min, dtype=dtype, device=device)
     tail_knots = torch.full((degree + 1,), k_max, dtype=dtype, device=device)
 
-    num_internal_knots = n_control_points - degree - 1
-    if num_internal_knots == 0:
-        internal_knots = torch.empty(0, dtype=dtype, device=device)
-    else:
+    if num_internal_knots > 0:
         internal_knots = torch.linspace(k_min, k_max, num_internal_knots + 2, dtype=dtype, device=device)[1:-1]
-
-    return torch.cat([head_knots, internal_knots, tail_knots])
+        return torch.cat((head_knots, internal_knots, tail_knots))
+    else:
+        return torch.cat((head_knots, tail_knots))
 
 
 class _BSplineFunction(torch.autograd.Function):
