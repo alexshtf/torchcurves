@@ -130,14 +130,13 @@ class _BSplineFunction(torch.autograd.Function):
             right_dist_all_p[..., p_iter] = knots[idx_knot_right] - u
 
             saved_val = zero
-
             for r_iter in range(p_iter):
                 denominator_batch = right_dist_all_p[..., r_iter + 1] + left_dist_all_p[..., p_iter - r_iter]
 
                 ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
-                ratios = torch.where(torch.isfinite(ratios), ratios, zero)
+                ratios.nan_to_num_(0, 0, 0)
 
-                batch_nonzero_basis[..., r_iter] = saved_val + right_dist_all_p[..., r_iter + 1] * ratios
+                batch_nonzero_basis[..., r_iter] =  torch.addcmul(saved_val, right_dist_all_p[..., r_iter + 1], ratios)
                 saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
 
             batch_nonzero_basis[..., p_iter] = saved_val
