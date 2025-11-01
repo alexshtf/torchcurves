@@ -245,6 +245,40 @@ uv run pytest --cov=torchcurves
 uv run pytest tests/test_bspline.py -v
 ```
 
+## Performance Benchmarks
+
+This project includes opt-in performance benchmarks (forward and backward passes) using `pytest-benchmark`.
+
+Location: `benchmarks/`
+
+Run benchmarks:
+
+```bash
+# Run all benchmarks
+uv run pytest benchmarks -q
+
+# Or select only perf-marked tests if you mix them into tests/
+uv run pytest -m perf -q
+```
+
+CUDA timing notes: We synchronize before/after timed regions for accurate GPU timings.
+
+Compare runs and fail CI on regressions:
+
+```bash
+# Save a baseline
+uv run pytest benchmarks --benchmark-save=legendre_baseline
+
+# Compare current run to baseline (fail if mean slower by 10% or more)
+uv run pytest benchmarks --benchmark-compare --benchmark-compare-fail=mean:10%
+```
+
+Export results:
+
+```bash
+uv run pytest benchmarks --benchmark-json=bench.json
+```
+
 ## Building the docs
 
 ```bash
