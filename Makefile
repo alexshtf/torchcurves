@@ -5,16 +5,16 @@ sync:
 	uv sync --all-groups
 
 test:
-	uv run pytest
+	uv run pytest tests
 
 doc:
 	uv run sphinx-build -b html docs docs/_build
 
 bmark:
-	uv run pytest benchmarks
+	uv run pytest benchmarks --benchmark-sort=fullname
 
 bmark_save:
-	uv run pytest benchmarks --benchmark-save=baseline
+	uv run pytest benchmarks --benchmark-save=baseline --benchmark-sort=fullname
 
 bmark_cmp:
 	uv run pytest benchmarks --benchmark-compare --benchmark-sort=fullname
