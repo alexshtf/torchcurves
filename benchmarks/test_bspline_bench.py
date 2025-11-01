@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from torchcurves.modules._bspline import BSplineCurve
+from torchcurves.modules._bspline import BSpline
 
 
 @pytest.mark.perf
@@ -12,7 +12,7 @@ from torchcurves.modules._bspline import BSplineCurve
 ])
 def test_bspline_forward(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     torch.manual_seed(0)
-    model = BSplineCurve(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
+    model = BSpline(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
     u = torch.rand(batch, curves, device=device)
 
     # Warmup
@@ -35,7 +35,7 @@ def test_bspline_forward(benchmark, device, sync, batch, curves, dim, degree, n_
 ])
 def test_bspline_backward(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     torch.manual_seed(0)
-    model = BSplineCurve(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
+    model = BSpline(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
     u = torch.rand(batch, curves, device=device)
 
     # Warmup

@@ -4,8 +4,8 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torchcurves import BSplineCurve
-from torchcurves.functional import bspline_curves
+from torchcurves import BSpline
+from torchcurves.functional import bspline
 
 
 class TestBSplineFunction(unittest.TestCase):
@@ -55,7 +55,7 @@ class TestBSplineFunction(unittest.TestCase):
             # u: (N, M) -> (1 sample, 1 curve)
             u = u_val_scalar_item.view(1, 1)
             # points: (N, M, D) -> (1, 1, 1)
-            points = bspline_curves(u, control_points, knots, degree)
+            points = bspline(u, control_points, knots, degree)
             self.assertAlmostEqual(
                 points.squeeze().item(), control_points.squeeze().item(), places=5, msg=f"Failed for u={u.item()}"
             )
@@ -66,7 +66,7 @@ class TestBSplineFunction(unittest.TestCase):
             # Output is (1,1,1), gradcheck handles this.
             self.assertTrue(
                 torch.autograd.gradcheck(
-                    lambda x: bspline_curves(x, cp_gc, knots, degree),  # noqa: B023
+                    lambda x: bspline(x, cp_gc, knots, degree),  # noqa: B023
                     u_gc,
                     eps=1e-6,
                     atol=1e-5,
@@ -75,7 +75,7 @@ class TestBSplineFunction(unittest.TestCase):
                 )
             )
 
-            points_gc = bspline_curves(u_gc, cp_gc, knots, degree)
+            points_gc = bspline(u_gc, cp_gc, knots, degree)
             points_gc.sum().backward()  # .sum() for scalar loss
             self.assertAlmostEqual(u_gc.grad.squeeze().item(), 0.0, places=5, msg=f"Grad_u non-zero for u={u.item()}")
 
@@ -93,14 +93,14 @@ class TestBSplineFunction(unittest.TestCase):
         u = u_scalar.unsqueeze(1)
 
         # points: (N, M, D) -> (N, 1, 1)
-        points = bspline_curves(u, control_points, knots, degree)
+        points = bspline(u, control_points, knots, degree)
         expected_points = torch.full((u.shape[0], 1, 1), const_val, dtype=self.default_dtype, device=self.device)
         torch.testing.assert_close(points, expected_points, atol=1e-5, rtol=1e-5)
 
         u_gc = u.clone().requires_grad_(True)
         cp_gc = control_points.clone().requires_grad_(True)
 
-        output = bspline_curves(u_gc, cp_gc, knots, degree)
+        output = bspline(u_gc, cp_gc, knots, degree)
         output.sum().backward()
 
         # u_gc.grad: (N,1)
@@ -135,7 +135,7 @@ class TestBSplineFunction(unittest.TestCase):
         expected_points_scalar = (u_scalar + 1.0) / 2.0
         expected_points = expected_points_scalar.unsqueeze(1).unsqueeze(1)  # (N,1,1)
 
-        points = bspline_curves(u, control_points, knots, degree)
+        points = bspline(u, control_points, knots, degree)
         torch.testing.assert_close(points, expected_points, atol=1e-6, rtol=1e-5)
 
         u_gc = u.clone().requires_grad_(True)
@@ -143,7 +143,7 @@ class TestBSplineFunction(unittest.TestCase):
 
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x: bspline_curves(x, cp_gc.detach(), knots, degree).sum(),
+                lambda x: bspline(x, cp_gc.detach(), knots, degree).sum(),
                 u_gc.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-5,
@@ -153,7 +153,7 @@ class TestBSplineFunction(unittest.TestCase):
         )
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x: bspline_curves(u_gc.detach(), x, knots, degree).sum(),
+                lambda x: bspline(u_gc.detach(), x, knots, degree).sum(),
                 cp_gc.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-5,
@@ -162,7 +162,7 @@ class TestBSplineFunction(unittest.TestCase):
             )
         )
 
-        output_an = bspline_curves(u_gc, cp_gc.detach(), knots, degree)
+        output_an = bspline(u_gc, cp_gc.detach(), knots, degree)
         output_an.sum().backward()
         # C'(u) = 0.5
         expected_grad_u = torch.full_like(u_gc, 0.5)
@@ -186,7 +186,7 @@ class TestBSplineFunction(unittest.TestCase):
         expected_points_scalar = u_norm_scalar.pow(2)
         expected_points = expected_points_scalar.unsqueeze(1).unsqueeze(1)  # (N,1,1)
 
-        points = bspline_curves(u, control_points, knots, degree)
+        points = bspline(u, control_points, knots, degree)
         torch.testing.assert_close(points, expected_points, atol=1e-6, rtol=1e-5)
 
         u_gc = u.clone().requires_grad_(True)
@@ -194,7 +194,7 @@ class TestBSplineFunction(unittest.TestCase):
 
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x_u: bspline_curves(x_u, cp_gc.detach(), knots, degree).sum(),
+                lambda x_u: bspline(x_u, cp_gc.detach(), knots, degree).sum(),
                 u_gc.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-4,  # Increased atol for parabola
@@ -204,7 +204,7 @@ class TestBSplineFunction(unittest.TestCase):
         )
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x_cp: bspline_curves(u_gc.detach(), x_cp, knots, degree).sum(),
+                lambda x_cp: bspline(u_gc.detach(), x_cp, knots, degree).sum(),
                 cp_gc.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-5,
@@ -213,7 +213,7 @@ class TestBSplineFunction(unittest.TestCase):
             )
         )
 
-        output_an = bspline_curves(u_gc, cp_gc.detach(), knots, degree)
+        output_an = bspline(u_gc, cp_gc.detach(), knots, degree)
         output_an.sum().backward()
         # C'(u) = d/du [((u+1)/2)^2] = 2 * ((u+1)/2) * (1/2) = (u+1)/2
         expected_grad_u_scalar = (u_gc.detach().squeeze(1) + 1.0) / 2.0
@@ -231,8 +231,8 @@ class TestBSplineFunction(unittest.TestCase):
         u_start = torch.tensor([[-1.0]], dtype=self.default_dtype, device=self.device)  # Min knot value
         u_end = torch.tensor([[1.0]], dtype=self.default_dtype, device=self.device)  # Max knot value
 
-        point_start = bspline_curves(u_start, control_points, knots, degree)  # (1,1,2)
-        point_end = bspline_curves(u_end, control_points, knots, degree)  # (1,1,2)
+        point_start = bspline(u_start, control_points, knots, degree)  # (1,1,2)
+        point_end = bspline(u_end, control_points, knots, degree)  # (1,1,2)
 
         # control_points[:, 0, :] is (1,2). Need (1,1,2)
         torch.testing.assert_close(point_start, control_points[:, 0:1, :], atol=1e-6, rtol=1e-5)
@@ -260,14 +260,14 @@ class TestBSplineFunction(unittest.TestCase):
         expected_points_calc[1, 0, :] = 0.25 * P0 + 0.5 * P1 + 0.25 * P2  # u_norm = 0.5
         expected_points_calc[2, 0, :] = P2  # u_norm = 1
 
-        points = bspline_curves(u, control_points_data, knots, degree)
+        points = bspline(u, control_points_data, knots, degree)
         torch.testing.assert_close(points, expected_points_calc, atol=1e-6, rtol=1e-5)
 
         u_gc = u.clone().requires_grad_(True)
         cp_gc = control_points_data.clone().requires_grad_(True)
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x_u: bspline_curves(x_u, cp_gc.detach(), knots, degree).sum(),
+                lambda x_u: bspline(x_u, cp_gc.detach(), knots, degree).sum(),
                 u_gc.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-5,
@@ -277,7 +277,7 @@ class TestBSplineFunction(unittest.TestCase):
         )
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x_cp: bspline_curves(u_gc.detach(), x_cp, knots, degree).sum(),
+                lambda x_cp: bspline(u_gc.detach(), x_cp, knots, degree).sum(),
                 cp_gc.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-5,
@@ -311,7 +311,7 @@ class TestBSplineFunction(unittest.TestCase):
         for i, u_n_val in enumerate(u_norm_vals):
             expected_points_batch[i, 0, :] = (1 - u_n_val) * P0 + u_n_val * P1
 
-        points_batch = bspline_curves(u_batch, control_points, knots, degree)
+        points_batch = bspline(u_batch, control_points, knots, degree)
         torch.testing.assert_close(points_batch, expected_points_batch, atol=1e-6, rtol=1e-5)
         self.assertEqual(points_batch.shape, (u_batch.shape[0], 1, control_points.shape[2]))
 
@@ -320,7 +320,7 @@ class TestBSplineFunction(unittest.TestCase):
 
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x_u: bspline_curves(x_u, cp_gc.detach(), knots, degree).sum(),
+                lambda x_u: bspline(x_u, cp_gc.detach(), knots, degree).sum(),
                 u_gc_batch.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-5,
@@ -330,7 +330,7 @@ class TestBSplineFunction(unittest.TestCase):
         )
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda x_cp: bspline_curves(u_gc_batch.detach(), x_cp, knots, degree).sum(),
+                lambda x_cp: bspline(u_gc_batch.detach(), x_cp, knots, degree).sum(),
                 cp_gc.detach().requires_grad_(True),
                 eps=1e-6,
                 atol=1e-5,
@@ -365,7 +365,7 @@ class TestBSplineFunction(unittest.TestCase):
         u_batched_clone_for_grad = u_batched.clone().requires_grad_(True)
 
         # 1. Evaluate all curves together
-        points_batched = bspline_curves(u_batched_clone_for_grad, control_points_batched_clone_for_grad, knots, degree)
+        points_batched = bspline(u_batched_clone_for_grad, control_points_batched_clone_for_grad, knots, degree)
 
         # 2. Evaluate each curve individually
         points_individual_list = []
@@ -374,7 +374,7 @@ class TestBSplineFunction(unittest.TestCase):
             u_single = u_batched[:, i : i + 1].clone()  # Shape (N, 1)
 
             # For individual evaluation, BSplineFunction expects (M_cp=1, C, D) and (N, M_u=1)
-            points_single = bspline_curves(u_single, cp_single, knots, degree)  # Output (N, 1, D)
+            points_single = bspline(u_single, cp_single, knots, degree)  # Output (N, 1, D)
             points_individual_list.append(points_single)
 
         points_stacked = torch.cat(points_individual_list, dim=1)  # (N,M,D)
@@ -397,7 +397,7 @@ class TestBSplineFunction(unittest.TestCase):
             cp_single_grad_target = control_points_batched[i : i + 1, :, :].detach().clone().requires_grad_(True)
             u_single_grad_target = u_batched[:, i : i + 1].detach().clone().requires_grad_(True)
 
-            points_single_eval = bspline_curves(u_single_grad_target, cp_single_grad_target, knots, degree)
+            points_single_eval = bspline(u_single_grad_target, cp_single_grad_target, knots, degree)
             grad_output_single = grad_output[:, i : i + 1, :]
             points_single_eval.backward(grad_output_single)
 
@@ -562,7 +562,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         # Output of apply is (N,M,D), sum for gradcheck
         self.assertTrue(
             torch.autograd.gradcheck(
-                lambda u_in, cp_in: bspline_curves(u_in, cp_in, knots, current_degree).sum(),
+                lambda u_in, cp_in: bspline(u_in, cp_in, knots, current_degree).sum(),
                 (u_gc, cp_gc),
                 eps=1e-6,
                 atol=1e-4,
@@ -618,19 +618,19 @@ class TestBSplineCurveModule(unittest.TestCase):
         self.assertEqual(module_cuda.control_points.grad.device.type, "cuda")
 
 
-def test_bspline_curves_default_knots_device_dtype():
+def test_bspline_default_knots_device_dtype():
     dtype = torch.float64
     device = torch.device("cpu")
 
     u = torch.tensor([[0.0]], dtype=dtype, device=device)
     control_points = torch.zeros((1, 4, 1), dtype=dtype, device=device)
 
-    out = bspline_curves(u, control_points)
+    out = bspline(u, control_points)
 
     assert out.dtype == control_points.dtype
 
 
-def test_bspline_curves_default_knots_cuda():
+def test_bspline_default_knots_cuda():
     if not torch.cuda.is_available():
         pytest.skip("CUDA not available, skipping test.")
 
@@ -640,7 +640,7 @@ def test_bspline_curves_default_knots_cuda():
     control_points = torch.randn(1, 4, 1, dtype=dtype, device=device)
     u = torch.linspace(-1, 1, 5, dtype=dtype, device=device).unsqueeze(1)
 
-    result = bspline_curves(u, control_points, knots=None, degree=3)
+    result = bspline(u, control_points, knots=None, degree=3)
 
     assert result.device == device
     assert result.dtype == dtype
