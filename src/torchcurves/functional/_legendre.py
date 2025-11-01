@@ -25,6 +25,6 @@ def legendre_curves(x: torch.Tensor, coefficients: torch.Tensor) -> torch.Tensor
         alpha = (2 * k + 1) / (k + 1)
         beta = (k + 1) / (k + 2)
         curr_coef = coefficients[k].unsqueeze(0)  # (1 x c x m)
-        bnext = torch.add(torch.addcmul(curr_coef, x, b1, value=alpha), b2, alpha=-beta)
-        b2, b1 = b1, bnext
+        b1_next = torch.add(torch.addcmul(curr_coef, x, b1, value=alpha), b2, alpha=-beta)
+        b2, b1 = b1, b1_next
     return b1
