@@ -1,6 +1,6 @@
 <p align="center">
 <picture>
-    <img width="20%" alt="Torchcurves Logo" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo.png">
+    <img width="30%" alt="Torchcurves Logo" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo.png">
 </picture>
 </p>
 
