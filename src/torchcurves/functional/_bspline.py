@@ -112,8 +112,9 @@ class _BSplineFunction(torch.autograd.Function):
         # batch_nonzero_basis[n, m, k] will store B_{spans[n,m]-degree+k, degree}(u[n,m])
         batch_nonzero_basis = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
 
-        left_dist_all_p = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
-        right_dist_all_p = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        left_dist_all_p = torch.empty(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        right_dist_all_p = torch.empty(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        zero = torch.tensor(0, dtype=dtype, device=device)
 
         batch_nonzero_basis[..., 0] = 1.0
 
@@ -132,7 +133,7 @@ class _BSplineFunction(torch.autograd.Function):
                 denominator_batch = right_dist_all_p[..., r_iter + 1] + left_dist_all_p[..., p_iter - r_iter]
 
                 ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
-                ratios = torch.where(torch.isfinite(ratios), ratios, torch.zeros_like(ratios))
+                ratios = torch.where(torch.isfinite(ratios), ratios, zero)
 
                 batch_nonzero_basis[..., r_iter] = saved_val + right_dist_all_p[..., r_iter + 1] * ratios
                 saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
