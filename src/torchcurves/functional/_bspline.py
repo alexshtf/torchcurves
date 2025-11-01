@@ -121,11 +121,11 @@ class _BSplineFunction(torch.autograd.Function):
         for p_iter in range(1, degree + 1):  # p_iter is 'j' in Piegl & Tiller A2.2
             # knots is 1D. We gather using indices derived from spans (N,M)
             # Resulting shapes for left_dist_all_p, etc. will be (N,M)
-            idx_knot_left = (spans + 1 - p_iter)
+            idx_knot_left = spans + 1 - p_iter
             idx_knot_left.clamp_(min=0, max=knots.shape[0] - 1)
             left_dist_all_p[..., p_iter] = u - knots[idx_knot_left]
 
-            idx_knot_right = (spans + p_iter)
+            idx_knot_right = spans + p_iter
             idx_knot_right.clamp_(min=0, max=knots.shape[0] - 1)
             right_dist_all_p[..., p_iter] = knots[idx_knot_right] - u
 
@@ -136,7 +136,7 @@ class _BSplineFunction(torch.autograd.Function):
                 ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
                 ratios.nan_to_num_(0, 0, 0)
 
-                batch_nonzero_basis[..., r_iter] =  torch.addcmul(saved_val, right_dist_all_p[..., r_iter + 1], ratios)
+                batch_nonzero_basis[..., r_iter] = torch.addcmul(saved_val, right_dist_all_p[..., r_iter + 1], ratios)
                 saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
 
             batch_nonzero_basis[..., p_iter] = saved_val
