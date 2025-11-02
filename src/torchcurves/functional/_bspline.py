@@ -218,16 +218,11 @@ class _BSplineFunction(torch.autograd.Function):
         knots_k_plus_1 = knots[(knots_idx + 1).clamp(max=max_knot_idx)]
         knots_k_plus_deg_plus_1 = knots[(knots_idx + (degree + 1)).clamp(max=max_knot_idx)]
 
-        alpha_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
-        beta_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        alpha_coeffs_batch = degree / (knots_k_plus_deg - knots_k)
+        alpha_coeffs_batch.nan_to_num_(0, 0, 0)
 
-        denom_alpha = knots_k_plus_deg - knots_k
-        mask_alpha = torch.abs(denom_alpha) > _BSplineFunction.ZERO_TOLERANCE
-        alpha_coeffs_batch[mask_alpha] = degree / denom_alpha[mask_alpha]
-
-        denom_beta = knots_k_plus_deg_plus_1 - knots_k_plus_1
-        mask_beta = torch.abs(denom_beta) > _BSplineFunction.ZERO_TOLERANCE
-        beta_coeffs_batch[mask_beta] = degree / denom_beta[mask_beta]
+        beta_coeffs_batch = degree / (knots_k_plus_deg_plus_1 - knots_k_plus_1)
+        beta_coeffs_batch.nan_to_num_(0, 0, 0)
 
         return alpha_coeffs_batch, beta_coeffs_batch
 
