@@ -4,7 +4,7 @@ import pytest
 import torch
 import torch.nn as nn
 
-from torchcurves import BSpline
+from torchcurves import BSplineCurveBase
 from torchcurves.functional import bspline
 
 
@@ -419,7 +419,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         degree = 3
         n_cps_per_curve = 5
         module = (
-            BSpline(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
+            BSplineCurveBase(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
             .to(self.device)
             .to(self.default_dtype)
         )
@@ -446,7 +446,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         expected_n_cps_per_curve = 4  # 7 - 2 - 1 = 4
 
         module = (
-            BSpline(num_curves=num_curves, dim=dim, degree=degree, knots_config=knots_tensor)
+            BSplineCurveBase(num_curves=num_curves, dim=dim, degree=degree, knots_config=knots_tensor)
             .to(self.device)
             .to(self.default_dtype)
         )
@@ -457,18 +457,18 @@ class TestBSplineCurveModule(unittest.TestCase):
 
     def test_init_errors(self):
         with self.assertRaisesRegex(ValueError, "must be greater than the degree"):
-            BSpline(num_curves=1, dim=2, degree=3, knots_config=3)  # n_cp <= degree
+            BSplineCurveBase(num_curves=1, dim=2, degree=3, knots_config=3)  # n_cp <= degree
 
         knots_tensor_short = torch.tensor([0.0, 0.0, 1.0, 1.0])
         with self.assertRaisesRegex(ValueError, "must be greater than the degree"):
-            BSpline(num_curves=1, dim=2, degree=3, knots_config=knots_tensor_short)
+            BSplineCurveBase(num_curves=1, dim=2, degree=3, knots_config=knots_tensor_short)
 
         with self.assertRaisesRegex(TypeError, "knots_config must be an int .*or.*Tensor.*"):
-            BSpline(num_curves=1, dim=2, degree=3, knots_config="wrong_type")  # type: ignore
+            BSplineCurveBase(num_curves=1, dim=2, degree=3, knots_config="wrong_type")  # type: ignore
 
         knots_tensor_2d = torch.tensor([[0.0, 1.0]])
         with self.assertRaisesRegex(ValueError, "Provided knots_config tensor must be 1D"):
-            BSpline(num_curves=1, dim=2, degree=1, knots_config=knots_tensor_2d)
+            BSplineCurveBase(num_curves=1, dim=2, degree=1, knots_config=knots_tensor_2d)
 
     def test_forward_pass_shape_and_device(self):
         num_curves = 1
@@ -477,7 +477,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         n_cps_per_curve = 4
         batch_size = 10  # Number of u-samples per curve
         module = (
-            BSpline(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
+            BSplineCurveBase(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
             .to(self.device)
             .to(self.default_dtype)
         )
@@ -498,7 +498,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         degree = 3
         n_cps_per_curve = 5
         module = (
-            BSpline(
+            BSplineCurveBase(
                 num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve, normalize_fn="clamp"
             )
             .to(self.device)
@@ -522,7 +522,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         degree = 2
         n_cps_per_curve = 4
         module = (
-            BSpline(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
+            BSplineCurveBase(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
             .to(self.device)
             .to(self.default_dtype)
         )
@@ -546,7 +546,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         degree = 2
         n_cps_per_curve = 3
         module = (
-            BSpline(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
+            BSplineCurveBase(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
             .to(self.device)
             .to(self.default_dtype)
         )
@@ -573,7 +573,7 @@ class TestBSplineCurveModule(unittest.TestCase):
 
         # Check module call w.r.t 'u'
         module_clone = (
-            BSpline(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
+            BSplineCurveBase(num_curves=num_curves, dim=dim, degree=degree, knots_config=n_cps_per_curve)
             .to(self.device)
             .to(self.default_dtype)
         )
@@ -596,7 +596,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         dim = 2
         degree = 2
         n_cps_per_curve = 4
-        module_cpu = BSpline(num_curves, dim, degree, n_cps_per_curve)
+        module_cpu = BSplineCurveBase(num_curves, dim, degree, n_cps_per_curve)
 
         self.assertEqual(module_cpu.control_points.device.type, "cpu")
         self.assertEqual(module_cpu.knots.device.type, "cpu")

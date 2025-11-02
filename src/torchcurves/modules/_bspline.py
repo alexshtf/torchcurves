@@ -113,42 +113,4 @@ class BSplineCurveBase(nn.Module):
             )
 
         u_prepared = self._prepare_arg(u)
-        return self._forward_core(u_prepared)
-
-    def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
-        # u_prepared has shape (N, M)
-        # self.control_points has shape (M, C, D)
-        # Should return tensor of shape (N, M, D)
-        raise NotImplementedError("This method should be implemented in derived classes")
-
-
-class BSpline(BSplineCurveBase):
-    r"""Unified B-Spline layer that automatically handles backpropagation.
-
-    The learnable parameters are the control points of :math:`M` curves in :math:`\mathbb{R}^D`.
-    All curves share the same degree and knot configuration.
-
-    The input of this layer normalized to the range :math:`[-1, 1]` (or the range of the knots if specified differently)
-    using the specified normalization strategy.
-
-    This layer automatically adjusts based on whether the input requires gradients:
-    - If input requires gradients, computes gradients for both input and control points using custom autograd.
-    - If input doesn't require gradients, uses an optimized fast path while still allowing
-      gradients to flow to the control points.
-
-    Args:
-        num_curves: Number of B-spline curves to define in this module (:math:`M`).
-        dim: Dimension of each curve's output points (:math:`D`).
-        degree: Degree of the B-spline (default: 3).
-        knots_config:
-            If an int, it specifies the number of control points per curve (:math:`C`).
-            A uniformly-spaced knot vector will be automatically generated in [-1, 1].
-            If a torch.Tensor, it explicitly specifies the knot values. The number
-            of control points will be inferred. The tensor should be 1D.
-        normalize_fn: Normalization method layer's input. (default: "rational")
-        normalization_scale: Scale factor for normalization (default: 1.0).
-
-    """
-
-    def _forward_core(self, u_prepared: torch.Tensor) -> torch.Tensor:
         return bspline(u_prepared, self.control_points, self.knots, self.degree)
