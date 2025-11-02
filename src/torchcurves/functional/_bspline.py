@@ -208,14 +208,15 @@ class _BSplineFunction(torch.autograd.Function):
         num_samples_n, num_curves_m = spans.shape
         device, dtype = spans.device, knots.dtype  # Use knot's dtype for coeffs
 
-        degrees_range = torch.arange(degree + 1, device=device).view(1, 1, -1)
-        knots_idx = spans.unsqueeze(-1) - degree + degrees_range  # (N, M, degree+1)
+        degrees_range = torch.arange(-degree, 1, device=device).view(1, 1, -1)
+        knots_idx = spans.unsqueeze(-1) + degrees_range  # (N, M, degree+1)
+        max_knot_idx = knots.shape[0] - 1
 
         # Gather knot values - knots[knots_idx] will broadcast correctly
-        knots_k = knots[knots_idx.clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_deg = knots[(knots_idx + degree).clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_1 = knots[(knots_idx + 1).clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_deg_plus_1 = knots[(knots_idx + degree + 1).clamp(min=0, max=knots.shape[0] - 1)]
+        knots_k = knots[knots_idx]
+        knots_k_plus_deg = knots[(knots_idx + degree).clamp(max=max_knot_idx)]
+        knots_k_plus_1 = knots[(knots_idx + 1).clamp(max=max_knot_idx)]
+        knots_k_plus_deg_plus_1 = knots[(knots_idx + (degree + 1)).clamp(max=max_knot_idx)]
 
         alpha_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
         beta_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
