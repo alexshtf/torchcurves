@@ -16,6 +16,5 @@ def sync(device):
     def _sync():
         if device == "cuda":
             torch.cuda.synchronize()
+
     return _sync
-
-

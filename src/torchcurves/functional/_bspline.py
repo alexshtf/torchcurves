@@ -30,7 +30,8 @@ def uniform_augmented_knots(
             that there are not enough points to form a valid knot vector.
 
     """
-    if n_control_points < 1 + degree:
+    num_internal_knots = n_control_points - degree - 1
+    if num_internal_knots < 0:
         raise ValueError("Not enough control points for the given degree to form internal knots.")
 
     # Generates knots in [-1, 1]
@@ -39,13 +40,11 @@ def uniform_augmented_knots(
     head_knots = torch.full((degree + 1,), k_min, dtype=dtype, device=device)
     tail_knots = torch.full((degree + 1,), k_max, dtype=dtype, device=device)
 
-    num_internal_knots = n_control_points - degree - 1
-    if num_internal_knots == 0:
-        internal_knots = torch.empty(0, dtype=dtype, device=device)
-    else:
+    if num_internal_knots > 0:
         internal_knots = torch.linspace(k_min, k_max, num_internal_knots + 2, dtype=dtype, device=device)[1:-1]
-
-    return torch.cat([head_knots, internal_knots, tail_knots])
+        return torch.cat((head_knots, internal_knots, tail_knots))
+    else:
+        return torch.cat((head_knots, tail_knots))
 
 
 class _BSplineFunction(torch.autograd.Function):
@@ -113,29 +112,31 @@ class _BSplineFunction(torch.autograd.Function):
         # batch_nonzero_basis[n, m, k] will store B_{spans[n,m]-degree+k, degree}(u[n,m])
         batch_nonzero_basis = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
 
-        left_dist_all_p = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
-        right_dist_all_p = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        left_dist_all_p = torch.empty(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        right_dist_all_p = torch.empty(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        zero = torch.tensor(0, dtype=dtype, device=device)
 
-        batch_nonzero_basis[..., 0] = 1.0
+        batch_nonzero_basis[..., 0].fill_(1)
 
         for p_iter in range(1, degree + 1):  # p_iter is 'j' in Piegl & Tiller A2.2
             # knots is 1D. We gather using indices derived from spans (N,M)
             # Resulting shapes for left_dist_all_p, etc. will be (N,M)
-            idx_knot_left = (spans + 1 - p_iter).clamp(min=0, max=knots.shape[0] - 1)
+            idx_knot_left = spans + 1 - p_iter
+            idx_knot_left.clamp_(min=0, max=knots.shape[0] - 1)
             left_dist_all_p[..., p_iter] = u - knots[idx_knot_left]
 
-            idx_knot_right = (spans + p_iter).clamp(min=0, max=knots.shape[0] - 1)
+            idx_knot_right = spans + p_iter
+            idx_knot_right.clamp_(min=0, max=knots.shape[0] - 1)
             right_dist_all_p[..., p_iter] = knots[idx_knot_right] - u
 
-            saved_val = torch.zeros(num_samples_n, num_curves_m, device=device, dtype=dtype)
-
+            saved_val = zero
             for r_iter in range(p_iter):
                 denominator_batch = right_dist_all_p[..., r_iter + 1] + left_dist_all_p[..., p_iter - r_iter]
 
                 ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
-                ratios = torch.where(torch.isfinite(ratios), ratios, torch.zeros_like(ratios))
+                ratios.nan_to_num_(0, 0, 0)
 
-                batch_nonzero_basis[..., r_iter] = saved_val + right_dist_all_p[..., r_iter + 1] * ratios
+                batch_nonzero_basis[..., r_iter] = torch.addcmul(saved_val, right_dist_all_p[..., r_iter + 1], ratios)
                 saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
 
             batch_nonzero_basis[..., p_iter] = saved_val
@@ -205,27 +206,23 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         num_samples_n, num_curves_m = spans.shape
-        device, dtype = spans.device, knots.dtype  # Use knot's dtype for coeffs
+        device, _ = spans.device, knots.dtype  # Use knot's dtype for coeffs
 
-        degrees_range = torch.arange(degree + 1, device=device).view(1, 1, -1)
-        knots_idx = spans.unsqueeze(-1) - degree + degrees_range  # (N, M, degree+1)
+        degrees_range = torch.arange(-degree, 1, device=device).view(1, 1, -1)
+        knots_idx = spans.unsqueeze(-1) + degrees_range  # (N, M, degree+1)
+        max_knot_idx = knots.shape[0] - 1
 
         # Gather knot values - knots[knots_idx] will broadcast correctly
-        knots_k = knots[knots_idx.clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_deg = knots[(knots_idx + degree).clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_1 = knots[(knots_idx + 1).clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_deg_plus_1 = knots[(knots_idx + degree + 1).clamp(min=0, max=knots.shape[0] - 1)]
+        knots_k = knots[knots_idx]
+        knots_k_plus_deg = knots[(knots_idx + degree).clamp(max=max_knot_idx)]
+        knots_k_plus_1 = knots[(knots_idx + 1).clamp(max=max_knot_idx)]
+        knots_k_plus_deg_plus_1 = knots[(knots_idx + (degree + 1)).clamp(max=max_knot_idx)]
 
-        alpha_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
-        beta_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        alpha_coeffs_batch = degree / (knots_k_plus_deg - knots_k)
+        alpha_coeffs_batch.nan_to_num_(0, 0, 0)
 
-        denom_alpha = knots_k_plus_deg - knots_k
-        mask_alpha = torch.abs(denom_alpha) > _BSplineFunction.ZERO_TOLERANCE
-        alpha_coeffs_batch[mask_alpha] = degree / denom_alpha[mask_alpha]
-
-        denom_beta = knots_k_plus_deg_plus_1 - knots_k_plus_1
-        mask_beta = torch.abs(denom_beta) > _BSplineFunction.ZERO_TOLERANCE
-        beta_coeffs_batch[mask_beta] = degree / denom_beta[mask_beta]
+        beta_coeffs_batch = degree / (knots_k_plus_deg_plus_1 - knots_k_plus_1)
+        beta_coeffs_batch.nan_to_num_(0, 0, 0)
 
         return alpha_coeffs_batch, beta_coeffs_batch
 
@@ -253,8 +250,8 @@ class _BSplineFunction(torch.autograd.Function):
         # Pad (1,0) means add 1 zero to the left: [0, N0,...,N(deg-1)]
         lower_pad_left = F.pad(lower_deg_basis, (1, 0))
 
-        basis_deriv = alpha * lower_pad_left - beta * lower_pad_right
-        return basis_deriv
+        # compute derivative without allocating redundant memory.
+        return torch.addcmul(alpha * lower_pad_left, -1, beta, lower_pad_right)
 
     @staticmethod
     def forward(
@@ -279,8 +276,8 @@ class _BSplineFunction(torch.autograd.Function):
         ctx.n_control_points_per_curve = n_control_points_per_curve  # C
 
         # For re-computing control_point_indices in backward
-        degrees_range = torch.arange(degree + 1, device=spans.device).view(1, 1, -1)
-        ctx.control_point_indices = spans.unsqueeze(-1) - degree + degrees_range  # (N,M,degree+1)
+        degrees_range = torch.arange(-degree, 1, device=spans.device).view(1, 1, -1)
+        ctx.control_point_indices = spans.unsqueeze(-1) + degrees_range  # (N,M,degree+1)
 
         return points
 
