@@ -5,11 +5,14 @@ from torchcurves.modules._bspline import BSplineCurve
 
 
 @pytest.mark.perf
-@pytest.mark.parametrize("batch,curves,dim,degree,n_ctrl", [
-    (256, 32, 64, 3, 16),
-    (256, 64, 64, 3, 32),
-    (256, 64, 64, 5, 32),
-])
+@pytest.mark.parametrize(
+    "batch,curves,dim,degree,n_ctrl",
+    [
+        (256, 32, 64, 3, 16),
+        (256, 64, 64, 3, 32),
+        (256, 64, 64, 5, 32),
+    ],
+)
 def test_bspline_forward(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark forward pass only (no gradients required)."""
     torch.manual_seed(0)
@@ -29,11 +32,14 @@ def test_bspline_forward(benchmark, device, sync, batch, curves, dim, degree, n_
 
 
 @pytest.mark.perf
-@pytest.mark.parametrize("batch,curves,dim,degree,n_ctrl", [
-    (128, 32, 64, 3, 16),
-    (128, 64, 64, 3, 32),
-    (128, 64, 64, 5, 32),
-])
+@pytest.mark.parametrize(
+    "batch,curves,dim,degree,n_ctrl",
+    [
+        (128, 32, 64, 3, 16),
+        (128, 64, 64, 3, 32),
+        (128, 64, 64, 5, 32),
+    ],
+)
 def test_bspline_backward_params(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark backward pass through parameters only (inputs don't require grad)."""
     torch.manual_seed(0)
@@ -59,11 +65,14 @@ def test_bspline_backward_params(benchmark, device, sync, batch, curves, dim, de
 
 
 @pytest.mark.perf
-@pytest.mark.parametrize("batch,curves,dim,degree,n_ctrl", [
-    (128, 32, 64, 3, 16),
-    (128, 64, 64, 3, 32),
-    (128, 64, 64, 5, 32),
-])
+@pytest.mark.parametrize(
+    "batch,curves,dim,degree,n_ctrl",
+    [
+        (128, 32, 64, 3, 16),
+        (128, 64, 64, 3, 32),
+        (128, 64, 64, 5, 32),
+    ],
+)
 def test_bspline_backward_inputs(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark backward pass through inputs only (parameters don't require grad)."""
     torch.manual_seed(0)
@@ -91,11 +100,14 @@ def test_bspline_backward_inputs(benchmark, device, sync, batch, curves, dim, de
 
 
 @pytest.mark.perf
-@pytest.mark.parametrize("batch,curves,dim,degree,n_ctrl", [
-    (128, 32, 64, 3, 16),
-    (128, 64, 64, 3, 32),
-    (128, 64, 64, 5, 32),
-])
+@pytest.mark.parametrize(
+    "batch,curves,dim,degree,n_ctrl",
+    [
+        (128, 32, 64, 3, 16),
+        (128, 64, 64, 3, 32),
+        (128, 64, 64, 5, 32),
+    ],
+)
 def test_bspline_backward_both(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark backward pass through both parameters and inputs."""
     torch.manual_seed(0)
@@ -120,6 +132,3 @@ def test_bspline_backward_both(benchmark, device, sync, batch, curves, dim, degr
         return loss
 
     benchmark(run)
-
-
-

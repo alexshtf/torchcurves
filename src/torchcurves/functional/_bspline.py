@@ -206,27 +206,23 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         num_samples_n, num_curves_m = spans.shape
-        device, dtype = spans.device, knots.dtype  # Use knot's dtype for coeffs
+        device, _ = spans.device, knots.dtype  # Use knot's dtype for coeffs
 
-        degrees_range = torch.arange(degree + 1, device=device).view(1, 1, -1)
-        knots_idx = spans.unsqueeze(-1) - degree + degrees_range  # (N, M, degree+1)
+        degrees_range = torch.arange(-degree, 1, device=device).view(1, 1, -1)
+        knots_idx = spans.unsqueeze(-1) + degrees_range  # (N, M, degree+1)
+        max_knot_idx = knots.shape[0] - 1
 
         # Gather knot values - knots[knots_idx] will broadcast correctly
-        knots_k = knots[knots_idx.clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_deg = knots[(knots_idx + degree).clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_1 = knots[(knots_idx + 1).clamp(min=0, max=knots.shape[0] - 1)]
-        knots_k_plus_deg_plus_1 = knots[(knots_idx + degree + 1).clamp(min=0, max=knots.shape[0] - 1)]
+        knots_k = knots[knots_idx]
+        knots_k_plus_deg = knots[(knots_idx + degree).clamp(max=max_knot_idx)]
+        knots_k_plus_1 = knots[(knots_idx + 1).clamp(max=max_knot_idx)]
+        knots_k_plus_deg_plus_1 = knots[(knots_idx + (degree + 1)).clamp(max=max_knot_idx)]
 
-        alpha_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
-        beta_coeffs_batch = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        alpha_coeffs_batch = degree / (knots_k_plus_deg - knots_k)
+        alpha_coeffs_batch.nan_to_num_(0, 0, 0)
 
-        denom_alpha = knots_k_plus_deg - knots_k
-        mask_alpha = torch.abs(denom_alpha) > _BSplineFunction.ZERO_TOLERANCE
-        alpha_coeffs_batch[mask_alpha] = degree / denom_alpha[mask_alpha]
-
-        denom_beta = knots_k_plus_deg_plus_1 - knots_k_plus_1
-        mask_beta = torch.abs(denom_beta) > _BSplineFunction.ZERO_TOLERANCE
-        beta_coeffs_batch[mask_beta] = degree / denom_beta[mask_beta]
+        beta_coeffs_batch = degree / (knots_k_plus_deg_plus_1 - knots_k_plus_1)
+        beta_coeffs_batch.nan_to_num_(0, 0, 0)
 
         return alpha_coeffs_batch, beta_coeffs_batch
 
@@ -254,8 +250,8 @@ class _BSplineFunction(torch.autograd.Function):
         # Pad (1,0) means add 1 zero to the left: [0, N0,...,N(deg-1)]
         lower_pad_left = F.pad(lower_deg_basis, (1, 0))
 
-        basis_deriv = alpha * lower_pad_left - beta * lower_pad_right
-        return basis_deriv
+        # compute derivative without allocating redundant memory.
+        return torch.addcmul(alpha * lower_pad_left, -1, beta, lower_pad_right)
 
     @staticmethod
     def forward(
@@ -280,8 +276,8 @@ class _BSplineFunction(torch.autograd.Function):
         ctx.n_control_points_per_curve = n_control_points_per_curve  # C
 
         # For re-computing control_point_indices in backward
-        degrees_range = torch.arange(degree + 1, device=spans.device).view(1, 1, -1)
-        ctx.control_point_indices = spans.unsqueeze(-1) - degree + degrees_range  # (N,M,degree+1)
+        degrees_range = torch.arange(-degree, 1, device=spans.device).view(1, 1, -1)
+        ctx.control_point_indices = spans.unsqueeze(-1) + degrees_range  # (N,M,degree+1)
 
         return points
 
