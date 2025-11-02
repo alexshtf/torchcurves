@@ -277,7 +277,7 @@ class _BSplineFunction(torch.autograd.Function):
 
         # For re-computing control_point_indices in backward
         degrees_range = torch.arange(-degree, 1, device=spans.device).view(1, 1, -1)
-        ctx.control_point_indices = spans.unsqueeze(-1)  + degrees_range  # (N,M,degree+1)
+        ctx.control_point_indices = spans.unsqueeze(-1) + degrees_range  # (N,M,degree+1)
 
         return points
 
