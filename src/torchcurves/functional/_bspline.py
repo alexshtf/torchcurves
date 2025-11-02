@@ -30,7 +30,8 @@ def uniform_augmented_knots(
             that there are not enough points to form a valid knot vector.
 
     """
-    if n_control_points < 1 + degree:
+    num_internal_knots = n_control_points - degree - 1
+    if num_internal_knots < 0:
         raise ValueError("Not enough control points for the given degree to form internal knots.")
 
     # Generates knots in [-1, 1]
@@ -39,13 +40,11 @@ def uniform_augmented_knots(
     head_knots = torch.full((degree + 1,), k_min, dtype=dtype, device=device)
     tail_knots = torch.full((degree + 1,), k_max, dtype=dtype, device=device)
 
-    num_internal_knots = n_control_points - degree - 1
-    if num_internal_knots == 0:
-        internal_knots = torch.empty(0, dtype=dtype, device=device)
-    else:
+    if num_internal_knots > 0:
         internal_knots = torch.linspace(k_min, k_max, num_internal_knots + 2, dtype=dtype, device=device)[1:-1]
-
-    return torch.cat([head_knots, internal_knots, tail_knots])
+        return torch.cat((head_knots, internal_knots, tail_knots))
+    else:
+        return torch.cat((head_knots, tail_knots))
 
 
 class _BSplineFunction(torch.autograd.Function):
@@ -113,29 +112,31 @@ class _BSplineFunction(torch.autograd.Function):
         # batch_nonzero_basis[n, m, k] will store B_{spans[n,m]-degree+k, degree}(u[n,m])
         batch_nonzero_basis = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
 
-        left_dist_all_p = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
-        right_dist_all_p = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        left_dist_all_p = torch.empty(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        right_dist_all_p = torch.empty(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        zero = torch.tensor(0, dtype=dtype, device=device)
 
-        batch_nonzero_basis[..., 0] = 1.0
+        batch_nonzero_basis[..., 0].fill_(1)
 
         for p_iter in range(1, degree + 1):  # p_iter is 'j' in Piegl & Tiller A2.2
             # knots is 1D. We gather using indices derived from spans (N,M)
             # Resulting shapes for left_dist_all_p, etc. will be (N,M)
-            idx_knot_left = (spans + 1 - p_iter).clamp(min=0, max=knots.shape[0] - 1)
+            idx_knot_left = spans + 1 - p_iter
+            idx_knot_left.clamp_(min=0, max=knots.shape[0] - 1)
             left_dist_all_p[..., p_iter] = u - knots[idx_knot_left]
 
-            idx_knot_right = (spans + p_iter).clamp(min=0, max=knots.shape[0] - 1)
+            idx_knot_right = spans + p_iter
+            idx_knot_right.clamp_(min=0, max=knots.shape[0] - 1)
             right_dist_all_p[..., p_iter] = knots[idx_knot_right] - u
 
-            saved_val = torch.zeros(num_samples_n, num_curves_m, device=device, dtype=dtype)
-
+            saved_val = zero
             for r_iter in range(p_iter):
                 denominator_batch = right_dist_all_p[..., r_iter + 1] + left_dist_all_p[..., p_iter - r_iter]
 
                 ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
-                ratios = torch.where(torch.isfinite(ratios), ratios, torch.zeros_like(ratios))
+                ratios.nan_to_num_(0, 0, 0)
 
-                batch_nonzero_basis[..., r_iter] = saved_val + right_dist_all_p[..., r_iter + 1] * ratios
+                batch_nonzero_basis[..., r_iter] = torch.addcmul(saved_val, right_dist_all_p[..., r_iter + 1], ratios)
                 saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
 
             batch_nonzero_basis[..., p_iter] = saved_val
