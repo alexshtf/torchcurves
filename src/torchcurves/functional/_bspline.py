@@ -206,7 +206,7 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         num_samples_n, num_curves_m = spans.shape
-        device, dtype = spans.device, knots.dtype  # Use knot's dtype for coeffs
+        device, _ = spans.device, knots.dtype  # Use knot's dtype for coeffs
 
         degrees_range = torch.arange(-degree, 1, device=device).view(1, 1, -1)
         knots_idx = spans.unsqueeze(-1) + degrees_range  # (N, M, degree+1)
