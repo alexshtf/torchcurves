@@ -18,3 +18,8 @@ bmark_save:
 
 bmark_cmp:
 	uv run pytest benchmarks --benchmark-compare --benchmark-sort=fullname
+
+lint:
+	uv run black --check .
+	uv run ruff check .
+	uv run mypy src
