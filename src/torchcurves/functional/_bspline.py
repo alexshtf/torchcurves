@@ -348,7 +348,7 @@ class _BSplineFunction(torch.autograd.Function):
         return grad_u, grad_control_points, None, None
 
 
-def bspline(
+def bspline_curves(
     u: torch.Tensor, control_points: torch.Tensor, knots: Optional[torch.Tensor] = None, degree: int = 3
 ) -> torch.Tensor:
     r"""Evaluate multiple B-Spline curves, each with its own control points, sharing the same knots and degree.

@@ -3,13 +3,33 @@ from typing import Literal, Union
 import torch
 import torch.nn as nn
 
-from ..functional import bspline, uniform_augmented_knots
+from ..functional import bspline_curves, uniform_augmented_knots
 from ..types import NormalizationFn
 from ._normalization import _normalization_catalogue
 
 
-class BSplineCurveBase(nn.Module):
-    """Base PyTorch module for B-spline curves, supporting a batch of multiple curves."""
+class BSplineCurve(nn.Module):
+    r"""Base PyTorch module for B-spline curves, supporting a batch of multiple curves.
+
+    The learnable parameters are the control points of :math:`M` curves in :math:`\mathbb{R}^D`.
+    All curves share the same degree and knot configuration.
+
+    The input of this layer normalized to the range :math:`[-1, 1]` (or the range of the knots if specified differently)
+    using the specified normalization strategy.
+
+    Args:
+        num_curves: Number of B-spline curves to define in this module (:math:`M`).
+        dim: Dimension of each curve's output points (:math:`D`).
+        degree: Degree of the B-spline (default: 3).
+        knots_config:
+            If an int, it specifies the number of control points per curve (:math:`C`).
+            A uniformly-spaced knot vector will be automatically generated in [-1, 1].
+            If a torch.Tensor, it explicitly specifies the knot values. The number
+            of control points will be inferred. The tensor should be 1D.
+        normalize_fn: Normalization method layer's input. (default: "rational")
+        normalization_scale: Scale factor for normalization (default: 1.0).
+
+    """
 
     knots: torch.Tensor  # explicit annotation for type-checking
 
@@ -113,4 +133,4 @@ class BSplineCurveBase(nn.Module):
             )
 
         u_prepared = self._prepare_arg(u)
-        return bspline(u_prepared, self.control_points, self.knots, self.degree)
+        return bspline_curves(u_prepared, self.control_points, self.knots, self.degree)

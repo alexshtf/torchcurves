@@ -1,7 +1,7 @@
 import pytest
 import torch
 
-from torchcurves.modules._bspline import BSplineCurveBase
+from torchcurves.modules._bspline import BSplineCurve
 
 
 @pytest.mark.perf
@@ -16,7 +16,7 @@ from torchcurves.modules._bspline import BSplineCurveBase
 def test_bspline_forward(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark forward pass only (no gradients required)."""
     torch.manual_seed(0)
-    model = BSplineCurveBase(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
+    model = BSplineCurve(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
     u = torch.rand(batch, curves, device=device)
 
     # Warmup
@@ -43,7 +43,7 @@ def test_bspline_forward(benchmark, device, sync, batch, curves, dim, degree, n_
 def test_bspline_backward_params(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark backward pass through parameters only (inputs don't require grad)."""
     torch.manual_seed(0)
-    model = BSplineCurveBase(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
+    model = BSplineCurve(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
     u = torch.rand(batch, curves, device=device, requires_grad=False)
 
     # Warmup
@@ -76,7 +76,7 @@ def test_bspline_backward_params(benchmark, device, sync, batch, curves, dim, de
 def test_bspline_backward_inputs(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark backward pass through inputs only (parameters don't require grad)."""
     torch.manual_seed(0)
-    model = BSplineCurveBase(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
+    model = BSplineCurve(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
     # Disable gradients for parameters
     for p in model.parameters():
         p.requires_grad_(False)
@@ -111,7 +111,7 @@ def test_bspline_backward_inputs(benchmark, device, sync, batch, curves, dim, de
 def test_bspline_backward_both(benchmark, device, sync, batch, curves, dim, degree, n_ctrl):
     """Benchmark backward pass through both parameters and inputs."""
     torch.manual_seed(0)
-    model = BSplineCurveBase(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
+    model = BSplineCurve(num_curves=curves, dim=dim, degree=degree, knots_config=n_ctrl).to(device)
     u = torch.rand(batch, curves, device=device, requires_grad=True)
 
     # Warmup
