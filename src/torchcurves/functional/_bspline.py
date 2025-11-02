@@ -251,7 +251,7 @@ class _BSplineFunction(torch.autograd.Function):
         lower_pad_left = F.pad(lower_deg_basis, (1, 0))
 
         # compute derivative without allocating redundant memory.
-        return torch.addcmul(alpha * lower_pad_left, -1, beta, lower_pad_right)
+        return torch.addcmul(alpha * lower_pad_left, beta, lower_pad_right, value=-1)
 
     @staticmethod
     def forward(
