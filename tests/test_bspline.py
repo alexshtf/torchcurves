@@ -618,7 +618,7 @@ class TestBSplineCurveModule(unittest.TestCase):
         self.assertEqual(module_cuda.control_points.grad.device.type, "cuda")
 
 
-def test_bspline_curves_default_knots_device_dtype():
+def test_bspline_default_knots_device_dtype():
     dtype = torch.float64
     device = torch.device("cpu")
 
@@ -630,7 +630,7 @@ def test_bspline_curves_default_knots_device_dtype():
     assert out.dtype == control_points.dtype
 
 
-def test_bspline_curves_default_knots_cuda():
+def test_bspline_default_knots_cuda():
     if not torch.cuda.is_available():
         pytest.skip("CUDA not available, skipping test.")
 

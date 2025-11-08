@@ -251,7 +251,7 @@ class _BSplineFunction(torch.autograd.Function):
         lower_pad_left = F.pad(lower_deg_basis, (1, 0))
 
         # compute derivative without allocating redundant memory.
-        return torch.addcmul(alpha * lower_pad_left, -1, beta, lower_pad_right)
+        return torch.addcmul(alpha * lower_pad_left, beta, lower_pad_right, value=-1)
 
     @staticmethod
     def forward(
@@ -282,7 +282,7 @@ class _BSplineFunction(torch.autograd.Function):
         return points
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, None, None]:  # type: ignore
+    def backward(ctx, grad_output: torch.Tensor) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None]:  # type: ignore
         # grad_output shape: (N, M, D)
         u, control_points, knots, spans, basis_funcs = ctx.saved_tensors
         # u: (N,M), control_points: (M,C,D), knots: (K,), spans: (N,M), basis_funcs: (N,M,deg+1)
@@ -292,66 +292,69 @@ class _BSplineFunction(torch.autograd.Function):
         control_point_indices = ctx.control_point_indices  # (N,M,deg+1)
 
         num_samples_n, num_curves_m = u.shape
-        # _, _, dim_d = grad_output.shape
 
-        # Gradient with respect to u
-        # basis_deriv shape: (N, M, degree+1)
-        basis_deriv = _BSplineFunction.compute_basis_derivatives(u, knots, spans, degree)
+        # Compute only the gradients that are needed
+        need_grad_u = ctx.needs_input_grad[0]
+        need_grad_cp = ctx.needs_input_grad[1]
+
+        grad_u = None
+        grad_control_points = None
 
         clamped_cp_indices = torch.clamp(control_point_indices, 0, n_control_points_per_curve - 1)  # (N,M,deg+1)
 
-        # Gather control points for d_points_du calculation
-        # m_indices_for_gather shape: (N, M, degree+1)
-        m_indices_for_gather = torch.arange(num_curves_m, device=u.device).view(1, -1, 1)
-        m_indices_for_gather = m_indices_for_gather.expand(num_samples_n, -1, degree + 1)
+        if need_grad_u:
+            # basis_deriv shape: (N, M, degree+1)
+            basis_deriv = _BSplineFunction.compute_basis_derivatives(u, knots, spans, degree)
 
-        # gathered_cps shape: (N, M, degree+1, D)
-        gathered_cps = control_points[m_indices_for_gather, clamped_cp_indices, :]
+            # m_indices_for_gather shape: (N, M, degree+1)
+            m_indices_for_gather = torch.arange(num_curves_m, device=u.device).view(1, -1, 1)
+            m_indices_for_gather = m_indices_for_gather.expand(num_samples_n, -1, degree + 1)
 
-        # d_points_du[n,m,d] = sum_i basis_deriv[n,m,i] * gathered_cps[n,m,i,d]
-        d_points_du = torch.einsum("nmi,nmid->nmd", basis_deriv, gathered_cps)  # Shape (N, M, D)
+            # gathered_cps shape: (N, M, degree+1, D)
+            gathered_cps = control_points[m_indices_for_gather, clamped_cp_indices, :]
 
-        # grad_u[n,m] = sum_d grad_output[n,m,d] * d_points_du[n,m,d]
-        grad_u = (grad_output * d_points_du).sum(dim=-1)  # Shape (N, M)
+            # d_points_du[n,m,d] = sum_i basis_deriv[n,m,i] * gathered_cps[n,m,i,d]
+            d_points_du = torch.einsum("nmi,nmid->nmd", basis_deriv, gathered_cps)  # Shape (N, M, D)
 
-        # Gradient with respect to control_points
-        # grad_control_points shape: (M, C, D)
-        grad_control_points = torch.zeros_like(control_points)
+            # grad_u[n,m] = sum_d grad_output[n,m,d] * d_points_du[n,m,d]
+            grad_u = (grad_output * d_points_du).sum(dim=-1)  # Shape (N, M)
 
-        # update_values[n,m,i,d] = grad_output[n,m,d] * basis_funcs[n,m,i]
-        # grad_output.unsqueeze(2): (N,M,1,D)
-        # basis_funcs.unsqueeze(3): (N,M,deg+1,1)
-        update_values = grad_output.unsqueeze(2) * basis_funcs.unsqueeze(3)  # (N,M,deg+1,D)
+        if need_grad_cp:
+            # Gradient with respect to control_points
+            grad_control_points = torch.zeros_like(control_points)
 
-        # Permute for scatter_add_: target grad_control_points[m_idx, c_idx, d_idx]
-        # update_values: (N, M, deg+1, D) -> (M, N, deg+1, D)
-        update_values_perm = update_values.permute(1, 0, 2, 3)
-        # clamped_cp_indices: (N, M, deg+1) -> (M, N, deg+1)
-        clamped_cp_indices_perm = clamped_cp_indices.permute(1, 0, 2)
+            # update_values[n,m,i,d] = grad_output[n,m,d] * basis_funcs[n,m,i]
+            update_values = grad_output.unsqueeze(2) * basis_funcs.unsqueeze(3)  # (N,M,deg+1,D)
 
-        # Flatten N and deg+1 dimensions
-        # uv_flat: (M, N*(deg+1), D)
-        uv_flat = update_values_perm.reshape(num_curves_m, -1, grad_output.shape[-1])
-        # idx_flat: (M, N*(deg+1))
-        idx_flat = clamped_cp_indices_perm.reshape(num_curves_m, -1)
+            # Permute for scatter_add_: target grad_control_points[m_idx, c_idx, d_idx]
+            # update_values: (N, M, deg+1, D) -> (M, N, deg+1, D)
+            update_values_perm = update_values.permute(1, 0, 2, 3)
+            # clamped_cp_indices: (N, M, deg+1) -> (M, N, deg+1)
+            clamped_cp_indices_perm = clamped_cp_indices.permute(1, 0, 2)
 
-        # Expand idx_flat to match uv_flat for scatter_add_
-        # idx_expanded_for_scatter: (M, N*(deg+1), D)
-        idx_expanded_for_scatter = idx_flat.unsqueeze(-1).expand_as(uv_flat)
+            # Flatten N and deg+1 dimensions
+            # uv_flat: (M, N*(deg+1), D)
+            uv_flat = update_values_perm.reshape(num_curves_m, -1, grad_output.shape[-1])
+            # idx_flat: (M, N*(deg+1))
+            idx_flat = clamped_cp_indices_perm.reshape(num_curves_m, -1)
 
-        # Scatter add along dimension C (index 1)
-        grad_control_points.scatter_add_(1, idx_expanded_for_scatter, uv_flat)
+            # Expand idx_flat to match uv_flat for scatter_add_
+            # idx_expanded_for_scatter: (M, N*(deg+1), D)
+            idx_expanded_for_scatter = idx_flat.unsqueeze(-1).expand_as(uv_flat)
+
+            # Scatter add along dimension C (index 1)
+            grad_control_points.scatter_add_(1, idx_expanded_for_scatter, uv_flat)
 
         return grad_u, grad_control_points, None, None
 
 
 def bspline_curves(
     u: torch.Tensor, control_points: torch.Tensor, knots: Optional[torch.Tensor] = None, degree: int = 3
-):
+) -> torch.Tensor:
     r"""Evaluate multiple B-Spline curves, each with its own control points, sharing the same knots and degree.
 
-    This function allow back-propagating both through the control points and the argument. Useful as a layer in
-    a neural network.
+    This function automatically handles backpropagation based on whether inputs require gradients:
+    - Computes gradients only for inputs that require them using custom autograd.
 
     Args:
         u: A tensor of size :math:`(B, C)` of values between ``knots.min()`` and ``knots.max()``, representing
@@ -375,45 +378,4 @@ def bspline_curves(
             n_control_points, degree, dtype=control_points.dtype, device=control_points.device
         )
 
-    return _BSplineFunction.apply(
-        u,
-        control_points,
-        knots,
-        degree,
-    )
-
-
-def bspline_embeddings(
-    u: torch.Tensor, control_points: torch.Tensor, knots: Optional[torch.Tensor] = None, degree: int = 3
-):
-    r"""Evaluate multiple B-Spline curves, each with its own control points, sharing the same knots and degree.
-
-    This function allow back-propagating only through the control points and the argument. Useful as the input layer
-    in a neural network, whose arguments come from a data-set that requires no back-prop, while allowing a cheaper
-    computation for this usecase than :func:`bspline_curves`.
-
-    Args:
-        u: A tensor of size :math:`(B, C)` of values between ``knots.min()`` and ``knots.max()``, representing
-            a mini-batch of :math:`B` arguments for sampling each of the :math:`C` curves.
-        control_points: A tensor of size :math:`(M, C, D)` describing :math:`M` curves with :math:`C` control
-            points each, embedded in :math:`\mathbb{R}^D`.
-        knots: A 1D tensor of size :math:`M + P + 1` representing the spline function's
-            knot vector, where :math:`P` is the degree of the piecewise polynomials defining the spline function.
-            ``None`` means uniformly-spaced knots in :math:`[-1, 1]` with the not-a-knot boundary
-            conditions. (default: ``None``)
-        degree: The degree :math:`P` of the B-Spline function. (default: ``3`` meaning a cubic spline)
-
-    Returns:
-        A tensor of size :math:`(B, C, D)`, representing a mini-batch of size :math:`B`, corresponding to samples from
-        :math:`C` curves in :math:`\mathbb{R}^D`.
-
-    """
-    n_control_points = control_points.shape[1]
-    if knots is None:
-        knots = uniform_augmented_knots(
-            n_control_points, degree, dtype=control_points.dtype, device=control_points.device
-        )
-
-    spans = _BSplineFunction.find_spans(u, knots, degree, n_control_points)  # (N,M)
-    basis_funcs = _BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,deg+1)
-    return _BSplineFunction.evaluate_curve(basis_funcs, control_points, spans, degree)  # (N,M,D)
+    return _BSplineFunction.apply(u, control_points, knots, degree)

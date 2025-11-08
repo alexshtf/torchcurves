@@ -21,7 +21,6 @@ Layers
    :nosignatures:
    :template: classtemplate.rst
 
-   BSplineEmbeddings
    BSplineCurve
    LegendreCurve
    Sum

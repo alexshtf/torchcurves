@@ -6,7 +6,7 @@
 
 
 <div align="center">
-  
+
 [![torchcurves-backend](https://github.com/alexshtf/torchcurves/actions/workflows/tests.yml/badge.svg)](https://github.com/alexshtf/torchcurves/actions/workflows/test.yml)
 [![PyPI downloads](https://img.shields.io/pypi/dm/torchcurves)](https://pypi.org/project/torchcurves/)
 [![PyPI](https://img.shields.io/pypi/v/torchcurves)](https://pypi.org/project/torchcurves/)
@@ -60,7 +60,7 @@ def Net(nn.Module):
     def __init__(self, num_categorical, num_numerical, dim, num_knots=10):
         super().__init__()
         self.cat_emb = nn.Embedding(num_categorical, dim)
-        self.num_emb = tc.BSplineEmbeddings(num_numerical, dim, knots_config=num_knots)
+        self.num_emb = tc.BSplineCurve(num_numerical, dim, knots_config=num_knots)
         self.my_super_duper_transformer = MySuperDuperTransformer()
 
     def forward(self, x_categorical, x_numerical):

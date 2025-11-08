@@ -1,5 +1,5 @@
-from ._bspline import BSplineCurve, BSplineEmbeddings
+from ._bspline import BSplineCurve
 from ._kan_tools import Sum
 from ._legendre import LegendreCurve
 
-__all__ = ["BSplineEmbeddings", "BSplineCurve", "LegendreCurve", "Sum"]
+__all__ = ["BSplineCurve", "LegendreCurve", "Sum"]

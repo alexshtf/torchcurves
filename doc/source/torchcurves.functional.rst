@@ -24,7 +24,6 @@ Vectorized parametric curve evaluation functions.
    :nosignatures:
 
    bspline_curves
-   bspline_embeddings
    legendre_curves
 
 
