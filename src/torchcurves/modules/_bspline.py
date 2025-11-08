@@ -9,7 +9,7 @@ from ._normalization import _normalization_catalogue
 
 
 class BSplineCurve(nn.Module):
-    r"""Base PyTorch module for B-spline curves, supporting a batch of multiple curves.
+    r"""PyTorch module for B-spline curves, supporting a batch of multiple curves.
 
     The learnable parameters are the control points of :math:`M` curves in :math:`\mathbb{R}^D`.
     All curves share the same degree and knot configuration.
