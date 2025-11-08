@@ -282,7 +282,7 @@ class _BSplineFunction(torch.autograd.Function):
         return points
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, None, None]:  # type: ignore
+    def backward(ctx, grad_output: torch.Tensor) -> Tuple[torch.Tensor | None, torch.Tensor | None, None, None]:  # type: ignore
         # grad_output shape: (N, M, D)
         u, control_points, knots, spans, basis_funcs = ctx.saved_tensors
         # u: (N,M), control_points: (M,C,D), knots: (K,), spans: (N,M), basis_funcs: (N,M,deg+1)
