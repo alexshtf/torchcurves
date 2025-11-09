@@ -1,6 +1,6 @@
 [project]
 name = "torchcurves"
-version = "0.1.1"
+dynamic = ["version"]
 description = "PyTorch module for differentiable parametric curves with learnable coefficients"
 authors = [
     { name = "Alex Shtoff", email = "alex.shtf@gmail.com" }
@@ -67,6 +67,9 @@ Issues = "https://github.com/alexshtf/torchcurves/issues"
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
+
+[tool.hatch.version]
+path = "src/torchcurves/__init__.py"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/torchcurves"]
