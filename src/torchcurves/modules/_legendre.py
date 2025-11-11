@@ -39,7 +39,7 @@ class LegendreCurve(nn.Module):
         num_curves: int,
         dim: int,
         degree: int,
-        normalize_fn: Union[Literal["clamp", "rational"], NormalizationFn] = "rational",
+        normalize_fn: Union[Literal["clamp", "rational", "arctan"], NormalizationFn] = "rational",
         normalization_scale: float = 1.0,
     ):
         super().__init__()
