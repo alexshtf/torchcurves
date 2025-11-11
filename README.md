@@ -157,6 +157,11 @@ x \to \frac{2}{\pi} \arctan(x / s).
 This kind of scaling function, up to constants, is the CDF of the Cauchy distribution. It is useful when our inputs
 are assumed to be heavy tailed.
 
+In Python it looks like this:
+```python
+tc.BSplineCurve(curve_dim, normalization_fn='arctan', normalization_scale=s)
+```
+
 ## Clamping
 
 The inputs are simply clipped to [-1, 1] after scaling, i.e.
