@@ -39,7 +39,7 @@ class BSplineCurve(nn.Module):
         dim: int,
         degree: int = 3,
         knots_config: Union[int, torch.Tensor] = 10,  # This is n_control_points_per_curve
-        normalize_fn: Union[Literal["clamp", "rational"], NormalizationFn] = "rational",
+        normalize_fn: Union[Literal["clamp", "rational", "arctan"], NormalizationFn] = "rational",
         normalization_scale: float = 1.0,
     ):
         super().__init__()
