@@ -13,6 +13,7 @@ Functions for normalizing inputs to the :math:`[-1, 1]` interval, required by mo
 
    clamp
    rational
+   arctan
 
 
 Parametrized curves
