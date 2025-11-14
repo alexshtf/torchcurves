@@ -5,7 +5,12 @@ import torch.nn.functional as F  # noqa: N812
 
 
 def uniform_augmented_knots(
-    n_control_points: int, degree: int, dtype=torch.float32, device: Union[torch.device, str, None] = None
+    n_control_points: int,
+    degree: int,
+    dtype=torch.float32,
+    device: Union[torch.device, str, None] = None,
+    k_min: float = -1,
+    k_max: float = 1,
 ) -> torch.Tensor:
     """Generate an augmented knot vector with uniform spacing in [-1, 1] for B-spline curves.
 
@@ -20,6 +25,8 @@ def uniform_augmented_knots(
         dtype (torch.dtype, optional): The desired data type of the output tensor.
                                        Defaults to torch.float32.
         device (torch.device or str): The device on which the knot vector will reside.
+        k_min (float, optional): The minimum value for the internal knots. Defaults to -1.0.
+        k_max (float, optional): The maximum value for the internal knots. Defaults to 1.0.
 
     Returns:
         torch.Tensor: A 1D tensor of knots consisting of head knots, uniformly spaced
@@ -33,9 +40,6 @@ def uniform_augmented_knots(
     num_internal_knots = n_control_points - degree - 1
     if num_internal_knots < 0:
         raise ValueError("Not enough control points for the given degree to form internal knots.")
-
-    # Generates knots in [-1, 1]
-    k_min, k_max = -1.0, 1.0  # Target range for normalized u
 
     head_knots = torch.full((degree + 1,), k_min, dtype=dtype, device=device)
     tail_knots = torch.full((degree + 1,), k_max, dtype=dtype, device=device)
