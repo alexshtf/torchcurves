@@ -6,7 +6,8 @@ Example notebooks
 
     examples/draw_bspline
     examples/draw_legendre
+    examples/factorization_machine
+    examples/monotone_functions
     examples/kan_bspline_rat
     examples/kan_legendre_rat
-    examples/factorization_machine
     examples/transformer_mixed_curves
