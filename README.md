@@ -74,7 +74,10 @@ Splines are monotone if their coefficient vectors are monotone. Want an increasi
 the coefficients are increasing!
 
 Here is a small example of a model for the probability of winning an auction, which has to be an increasing function
-of the bid.
+of the bid, using a simple idea:
+- Auction encoder encodes auction some vector $v$
+- We transform $v$ to an increasing vector $c$
+- Output is a spline function of the bid with coefficient vector $c$
 
 ```python
 import torch
