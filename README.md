@@ -35,11 +35,11 @@ continuous numerical embeddings for embedding-based models (e.g. factorization m
 - **Efficient numerics**: Clenshaw recursion for polynomials, Cox-DeBoor for splines.
 
 ## Installation
-
+With pip:
 ```bash
 pip install torchcurves
 ```
-
+With [uv](https://github.com/astral-sh/uv):
 ```bash
 uv add torchcurves
 ```
@@ -65,7 +65,10 @@ def Net(nn.Module):
         self.model_that_requires_embeddings = MySuperDuperModel()
 
     def forward(self, x_categorical, x_numerical):
-        embeddings = torch.cat([self.cat_emb(x_categorical), self.num_emb(x_numerical)], axis=-2)
+        embeddings = torch.cat([
+            self.cat_emb(x_categorical),
+            self.num_emb(x_numerical)
+        ], axis=-2)
         return self.model_that_requires_embeddings(embeddings)
 ```
 
