@@ -126,11 +126,11 @@ Now we can train the model to predict the probability of winning auctions given 
 ```python
 import torch.functional as F
 
-for auction_batch, bid_batch, win_batch in train_loader:
-    win_logits = model(auction_batch, bid_batch)
+for auction_features, bids, win_labels in train_loader:
+    win_logits = model(auction_features, bids)
     loss = F.binary_cross_entropy_with_logits(  # or any loss we desire
         win_logits,
-        win_batch
+        win_labels
     )
 
     optimizer.zero_grad()
