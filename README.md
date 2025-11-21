@@ -31,7 +31,8 @@ continuous numerical embeddings for embedding-based models (e.g. factorization m
 
 - **Fully Differentiable**: Custom autograd function ensures gradients flow
   properly through the curve evaluation.
-- **Batch Processing**: Vectorized operations for efficient batch evaluation.
+- **Batch Processing**: Vectorized operations for efficient batch and multi-curve evaluation.
+- **Efficient numerics**: Clenshaw recursion for polynomials, Cox-DeBoor for splines.
 
 ## Installation
 
@@ -61,14 +62,83 @@ def Net(nn.Module):
         super().__init__()
         self.cat_emb = nn.Embedding(num_categorical, dim)
         self.num_emb = tc.BSplineCurve(num_numerical, dim, knots_config=num_knots)
-        self.my_super_duper_transformer = MySuperDuperTransformer()
+        self.model_that_requires_embeddings = MySuperDuperModel()
 
     def forward(self, x_categorical, x_numerical):
         embeddings = torch.cat([self.cat_emb(x_categorical), self.num_emb(x_numerical)], axis=-2)
-        return self.my_super_duper_transformer(embeddings)
+        return self.model_that_requires_embeddings(embeddings)
 ```
 
-## Use case 2 - Kolmogorov-Arnold networks
+## Use case 2 - monotone functions
+Splines are monotone if their coefficient vectors are monotone. Want an increasing function? Just make sure
+the coefficients are increasing!
+
+Here is a small example of a model for the probability of winning an auction, which has to be an increasing function
+of the bid, using a simple idea:
+- Auction encoder encodes auction some vector $v$
+- We transform $v$ to an increasing vector $c$
+- Output is a spline function of the bid with coefficient vector $c$
+
+```python
+import torch
+from torch import nn
+import torchcurves.functional as tcf
+
+
+class AuctionWinModel(nn.Module):
+    def __init__(self, num_auction_features, num_bid_coefficients):
+        self.auction_encoder = make_auction_encoder(  # example - an MLP, a transformer, etc.
+            input_features=num_auction_features,
+            output_features=num_bid_coefficients,
+        )
+        self.spline_knots = nn.Buffer(tcf.uniform_augmented_knots(
+            n_control_points=num_bid_coefficients,
+            degree=3,
+            k_min=0,
+            k_max=1
+        ))
+
+    def forward(self, auction_features, bids):
+        # map auction features to increasing spline coefficients
+        spline_coeffs = self._make_increasing(self.auction_encoder(auction_features))
+
+        # map bids to [0, 1] using the arctan (or any other) normalization
+        mapped_bid = tcf.arctan(bids)
+
+        # evaluate the spline at the mapped bids, treating each
+        # mini-batch sample as a separate curve
+        return tcf.bspline_curves(
+            mapped_bid.unsqueeze(0),     # 1 x B (B curves in 1 dimension)
+            spline_coeffs.unsqueeze(-1), # B x C x 1 (B curves with C coefs in 1 dimension)
+            self.knots,
+            degree=3
+        )
+
+    def _make_increasing(self, x):
+        # transform a mini-batch of vectors to a mini-batch of increasing vectors
+        initial = x[..., :1]
+        increments = nn.functional.softplus(x[..., 1:])
+        concatenated = torch.concat((initial, increments), dim=-1)
+        return torch.cumsum(concatenated, dim=-1)
+```
+
+Now we can train the model to predict the probability of winning auctions given auction features and bid:
+```python
+import torch.functional as F
+
+for auction_batch, bid_batch, win_batch in train_loader:
+    win_logits = model(auction_batch, bid_batch)
+    loss = F.binary_cross_entropy_with_logits(  # or any loss we desire
+        win_logits,
+        win_batch
+    )
+
+    optimizer.zero_grad()
+    loss.backward()
+    optimizer.step()
+```
+
+## Use case 3 - Kolmogorov-Arnold networks
 
 A KAN [1] based on the B-Spline basis, along the lines of the original paper:
 
