@@ -17,10 +17,12 @@
 </div>
 
 A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients,
-such as a B-Spline curve with learnable control points. Why should you care?
+such as a B-Spline curve with learnable control points.
+
+What is it for? Turns out parametric curves are a powerful tool
 
 <figure>
-    <figcaption>Use cases</figcaption>
+    <figcaption style="text-align: center; font-weight: bold; font-size: 1.1em;">Use cases</figcaption>
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_dark.png">
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
