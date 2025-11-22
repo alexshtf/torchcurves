@@ -16,8 +16,7 @@
 
 </div>
 
-A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients,
-such as a B-Spline curve with learnable control points.
+A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients, such as a B-Spline curve with learnable control points.
 
 What is it for? Turns out parametric curves are a powerful tool
 
