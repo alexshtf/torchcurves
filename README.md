@@ -20,15 +20,15 @@ A PyTorch module for _vectorized_ and _differentiable_ parametric curves with le
 
 What is it for? Turns out parametric curves are a powerful tool
 
-<figure>
-    <figcaption style="text-align: center; font-weight: bold; font-size: 1.1em;">Use cases</figcaption>
+<div align="center">
+    <p><b>Use cases</b></p>
+
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_dark.png">
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
         <img width="80%" alt="Torchcurves Usecases" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
     </picture>
-</figure>
-
+</div>
 All the above use-cases have one thing in common - they are all parametric curves learned from training data. And this is what this library is all about.
 
 ## Docs
