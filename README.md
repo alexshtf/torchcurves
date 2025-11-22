@@ -1,8 +1,8 @@
 <p align="center">
 <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo_dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo_light.png">
-    <img width="30%" alt="Torchcurves Logo" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/logo_light.png">
+    <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/logo_dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/logo_light.png">
+    <img width="30%" alt="Torchcurves Logo" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/logo_light.png">
 </picture>
 </p>
 
@@ -16,14 +16,19 @@
 
 </div>
 
+A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients,
+such as a B-Spline curve with learnable control points. Why should you care?
 
-A PyTorch module for differentiable parametric curves with learnable coefficients,
-such as a B-Spline curve with learnable control points.
+<figure>
+    <figcaption>Use cases</figcaption>
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
+        <img width="80%" alt="Torchcurves Usecases" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
+    </picture>
+</figure>
 
-Fully differentiable curve implementations that integrate
-seamlessly with PyTorch's autograd system. It streamlines use cases such as
-continuous numerical embeddings for embedding-based models (e.g. factorization machines [6] or transformers
-[2,3]), Kolmogorov-Arnold networks [1], or path planning in robotics.
+All the above use-cases have one thing in common - they are all parametric curves learned from training data. And this is what this library is all about.
 
 ## Docs
 - [Documentation site](https://torchcurves.readthedocs.io/en/latest/).
@@ -31,9 +36,8 @@ continuous numerical embeddings for embedding-based models (e.g. factorization m
 
 ## Features
 
-- **Fully Differentiable**: Custom autograd function ensures gradients flow
-  properly through the curve evaluation.
-- **Batch Processing**: Vectorized operations for efficient batch and multi-curve evaluation.
+- **Differentiable**: Custom autograd function ensures gradients flow properly through the curve evaluation.
+- **Vectorized**: Vectorized operations for efficient batch and multi-curve evaluation.
 - **Efficient numerics**: Clenshaw recursion for polynomials, Cox-DeBoor for splines.
 
 ## Installation
@@ -48,7 +52,7 @@ uv add torchcurves
 
 ## Use cases
 
-There are examples in the `examples` directory showing how to build models using
+There are examples in the `docs/examples` directory showing how to build models using
 this library. Here we show some simple code snippets to appreciate the library.
 
 ## Use case 1 - continuous embeddings
@@ -64,26 +68,23 @@ def Net(nn.Module):
         super().__init__()
         self.cat_emb = nn.Embedding(num_categorical, dim)
         self.num_emb = tc.BSplineCurve(num_numerical, dim, knots_config=num_knots)
-        self.model_that_requires_embeddings = MySuperDuperModel()
+        self.embedding_based_model = MySuperDuperModel()
 
     def forward(self, x_categorical, x_numerical):
         embeddings = torch.cat([
             self.cat_emb(x_categorical),
             self.num_emb(x_numerical)
         ], axis=-2)
-        return self.model_that_requires_embeddings(embeddings)
+        return self.embedding_based_model(embeddings)
 ```
 
 ## Use case 2 - monotone functions
-Splines are monotone if their coefficient vectors are monotone. Want an increasing function? Just make sure
-the coefficients are increasing!
+Working on online advertising, and want to model the probability of winning an ad auction given the bid? We know higher bids
+must result in a higher win probability - we need a monotone function. Turns out B-Splines are monotone if their coefficient vectors are monotone. Want an increasing function? Just make sure
+the increasing - so let's use it.
 
-Here is a small example of a model for the probability of winning an auction, which has to be an increasing function
-of the bid, using a simple idea:
-- Auction encoder encodes auction some vector $v$
-- We transform $v$ to an increasing vector $c$
-- Output is a spline function of the bid with coefficient vector $c$
-
+Below is an example with an auction encoder that encodes the auction into a vector, we then transform it to an increasing vector,
+and use it as the coefficient vector for a B-Spline curve.
 ```python
 import torch
 from torch import nn
