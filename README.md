@@ -21,7 +21,6 @@ Turns out parametric curves cover many use cases - see the image below.
 
 <div align="center">
     <p><b>Use cases</b></p>
-
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_dark.png">
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
