@@ -115,7 +115,7 @@ class AuctionWinModel(nn.Module):
         return tcf.bspline_curves(
             mapped_bid.unsqueeze(0),     # 1 x B (B curves in 1 dimension)
             spline_coeffs.unsqueeze(-1), # B x C x 1 (B curves with C coefs in 1 dimension)
-            self.knots,
+            self.spline_knots,
             degree=3
         )
 
@@ -204,7 +204,7 @@ interval, typically [-1, 1]. Arbitrary inputs need to be normalized to this
 interval. We provide two simple out-of-the-box normalization strategies
 described below.
 
-## Rational scaling
+### Rational scaling
 
 This is the default strategy — this strategy computes
 
@@ -218,10 +218,10 @@ and is based on the paper
 In Python it looks like this:
 
 ```python
-tc.BSplineCurve(curve_dim, normalize_fn='rational', normalization_scale=s)
+tc.BSplineCurve(num_curves, curve_dim, normalize_fn='rational', normalization_scale=s)
 ```
 
-## Arctan scaling
+### Arctan scaling
 
 This strategy computes
 
@@ -234,10 +234,10 @@ are assumed to be heavy tailed.
 
 In Python it looks like this:
 ```python
-tc.BSplineCurve(curve_dim, normalize_fn='arctan', normalization_scale=s)
+tc.BSplineCurve(num_curves, curve_dim, normalize_fn='arctan', normalization_scale=s)
 ```
 
-## Clamping
+### Clamping
 
 The inputs are simply clipped to [-1, 1] after scaling, i.e.
 
@@ -248,36 +248,44 @@ x \to \max(\min(1, x / s), -1)
 In Python it looks like this:
 
 ```python
-tc.BSplineCurve(curve_dim, normalize_fn='clamp', normalization_scale=s)
+tc.BSplineCurve(num_curves, curve_dim, normalize_fn='clamp', normalization_scale=s)
 ```
 
-## Custom normalization
+### Custom normalization
 
 Provide a custom function that maps its input to the designated range after
 scaling. Example:
 
 ```python
-def erf_clamp(x: Tensor, scale: float = 1, out_min: float = -1, out_max: float = 1) -> Tensor:
+def erf_clamp(x: Tensor, scale: float = 1, out_min: float = -1, out_max: float = 1) -> torch.Tensor:
     mapped = torch.special.erf(x / scale)
     return ((mapped + 1) * (out_max - out_min)) / 2 + out_min
 
-tc.BSplineCurve(curve_dim, normalize_fn=erf_clamp, normalization_scale=s)
+tc.BSplineCurve(num_curves, curve_dim, normalize_fn=erf_clamp, normalization_scale=s)
 ```
 
-## Example: B-Spline KAN with clamping
+### Example: B-Spline KAN with clamping
 
 A KAN based on rationally scaled B-Spline basis with the default scale of $s=1$:
 
 ```python
+import torchcurves as tc
+from torch import nn
+
+input_dim = 2
+intermediate_dim = 5
+num_control_points = 10
+
+config = dict(knots_config=num_control_points, normalize_fn='clamp')
 spline_kan = nn.Sequential(
     # layer 1
-    tc.BSplineCurve(input_dim, intermediate_dim, knots_config=knots, normalize_fn='clamp'),
+    tc.BSplineCurve(input_dim, intermediate_dim, **config),
     tc.Sum(),
     # layer 2
-    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots_config=knots, normalize_fn='clamp'),
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, **config),
     tc.Sum(),
     # layer 3
-    tc.BSplineCurve(intermediate_dim, 1, knots_config=knots, normalize_fn='clamp'),
+    tc.BSplineCurve(intermediate_dim, 1, **config),
     tc.Sum(),
 )
 ```
@@ -374,7 +382,7 @@ uv run pytest benchmarks --benchmark-json=bench.json
 
 ```bash
 # Prepare API docs
-cd docs
+cd doc
 make html
 ```
 
