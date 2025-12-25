@@ -31,7 +31,7 @@ Turns out all the above use cases have one thing in common - they can all be exp
 
 ## Docs
 - [Documentation site](https://torchcurves.readthedocs.io/en/latest/).
-- [Example notebooks](https://torchcurves.readthedocs.io/en/latest/example_notebooks.html) for you to try our
+- [Example notebooks](https://torchcurves.readthedocs.io/en/latest/example_notebooks.html) for you to try out.
 
 ## Features
 
@@ -51,7 +51,7 @@ uv add torchcurves
 
 ## Use cases
 
-There are examples in the `docs/examples` directory showing how to build models using
+There are examples in the `doc/examples` directory showing how to build models using
 this library. Here we show some simple code snippets to appreciate the library.
 
 ## Use case 1 - continuous embeddings
@@ -62,18 +62,18 @@ from torch import nn
 import torch
 
 
-def Net(nn.Module):
+class Net(nn.Module):
     def __init__(self, num_categorical, num_numerical, dim, num_knots=10):
         super().__init__()
         self.cat_emb = nn.Embedding(num_categorical, dim)
         self.num_emb = tc.BSplineCurve(num_numerical, dim, knots_config=num_knots)
-        self.embedding_based_model = MySuperDuperModel()
+        self.embedding_based_model = MySuperDuperModel() # <-- put your encoder model here
 
     def forward(self, x_categorical, x_numerical):
         embeddings = torch.cat([
             self.cat_emb(x_categorical),
             self.num_emb(x_numerical)
-        ], axis=-2)
+        ], dim=-2)
         return self.embedding_based_model(embeddings)
 ```
 
@@ -129,7 +129,7 @@ class AuctionWinModel(nn.Module):
 
 Now we can train the model to predict the probability of winning auctions given auction features and bid:
 ```python
-import torch.functional as F
+import torch.nn.functional as F
 
 for auction_features, bids, win_labels in train_loader:
     win_logits = model(auction_features, bids)
@@ -218,7 +218,7 @@ and is based on the paper
 In Python it looks like this:
 
 ```python
-tc.BSplineCurve(curve_dim, normalization_fn='rational', normalization_scale=s)
+tc.BSplineCurve(curve_dim, normalize_fn='rational', normalization_scale=s)
 ```
 
 ## Arctan scaling
@@ -234,7 +234,7 @@ are assumed to be heavy tailed.
 
 In Python it looks like this:
 ```python
-tc.BSplineCurve(curve_dim, normalization_fn='arctan', normalization_scale=s)
+tc.BSplineCurve(curve_dim, normalize_fn='arctan', normalization_scale=s)
 ```
 
 ## Clamping
@@ -248,7 +248,7 @@ x \to \max(\min(1, x / s), -1)
 In Python it looks like this:
 
 ```python
-tc.BSplineCurve(curve_dim, normalization_fn='clamp', normalization_scale=s)
+tc.BSplineCurve(curve_dim, normalize_fn='clamp', normalization_scale=s)
 ```
 
 ## Custom normalization
@@ -261,7 +261,7 @@ def erf_clamp(x: Tensor, scale: float = 1, out_min: float = -1, out_max: float =
     mapped = torch.special.erf(x / scale)
     return ((mapped + 1) * (out_max - out_min)) / 2 + out_min
 
-tc.BSplineCurve(curve_dim, normalization_fn=erf_clamp, normalization_scale=s)
+tc.BSplineCurve(curve_dim, normalize_fn=erf_clamp, normalization_scale=s)
 ```
 
 ## Example: B-Spline KAN with clamping
@@ -271,13 +271,13 @@ A KAN based on rationally scaled B-Spline basis with the default scale of $s=1$:
 ```python
 spline_kan = nn.Sequential(
     # layer 1
-    tc.BSplineCurve(input_dim, intermediate_dim, knots_config=knots, normalization_fn='clamp'),
+    tc.BSplineCurve(input_dim, intermediate_dim, knots_config=knots, normalize_fn='clamp'),
     tc.Sum(),
     # layer 2
-    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots_config=knots, normalization_fn='clamp'),
+    tc.BSplineCurve(intermediate_dim, intermediate_dim, knots_config=knots, normalize_fn='clamp'),
     tc.Sum(),
     # layer 3
-    tc.BSplineCurve(intermediate_dim, 1, knots_config=knots, normalization_fn='clamp'),
+    tc.BSplineCurve(intermediate_dim, 1, knots_config=knots, normalize_fn='clamp'),
     tc.Sum(),
 )
 ```
@@ -292,7 +292,7 @@ input_dim = 2
 intermediate_dim = 5
 degree = 5
 
-config = dict(degree=degree, normalization_fn="clamp")
+config = dict(degree=degree, normalize_fn="clamp")
 kan = nn.Sequential(
     # layer 1
     tc.LegendreCurve(input_dim, intermediate_dim, **config),
