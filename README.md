@@ -29,7 +29,23 @@ A PyTorch module for _vectorized_ and _differentiable_ parametric curves with le
 
 Turns out all the above use cases have one thing in common - they can all be expressed using learnable parametric curves, and this the tool this library provides.
 
-## Docs
+## Learn
+A simple "hello world" example - evaluate three two-dimensional b-spline curves at four points:
+```python
+import torch
+import torchcurves as tc
+
+u = torch.rand(4, 3)        # (B, C)
+curve = tc.BSplineCurve(
+    num_curves=3,           # C
+    dim=2,                  # D
+)
+y = curve(u)                # (B, C, D)
+
+print(u.shape, "->", y.shape)            # torch.Size([4, 3]) -> torch.Size([4, 3, 2])
+```
+
+For more information:
 - [Documentation site](https://torchcurves.readthedocs.io/en/latest/).
 - [Example notebooks](https://torchcurves.readthedocs.io/en/latest/example_notebooks.html) for you to try out.
 
