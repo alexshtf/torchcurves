@@ -58,6 +58,94 @@ class _BSplineFunction(torch.autograd.Function):
     """Custom autograd function for B-spline evaluation and differentiation (Vectorized for multiple curves)."""
 
     @staticmethod
+    def _is_uniform_knots(
+        knots: torch.Tensor, degree: int, n_control_points: int, atol: float = 1e-6, rtol: float = 1e-6
+    ) -> bool:
+        if knots.ndim != 1 or n_control_points <= degree:
+            return False
+
+        k_min = knots[degree]
+        k_max = knots[n_control_points]
+        if not (
+            torch.allclose(knots[: degree + 1], k_min, atol=atol, rtol=rtol)
+            and torch.allclose(knots[n_control_points:], k_max, atol=atol, rtol=rtol)
+        ):
+            return False
+
+        internal = knots[degree : n_control_points + 1]
+        if internal.numel() <= 1:
+            return True
+
+        diffs = internal[1:] - internal[:-1]
+        return torch.allclose(diffs, diffs[0], atol=atol, rtol=rtol)
+
+    @staticmethod
+    def _uniform_span_step(
+        u: torch.Tensor, degree: int, n_control_points: int, k_min: torch.Tensor, k_max: torch.Tensor
+    ) -> Tuple[torch.Tensor, torch.Tensor]:
+        num_spans = n_control_points - degree
+        step = (k_max - k_min) / num_spans
+        raw = (u - k_min) / step
+        spans = torch.floor(raw).to(torch.long) + degree
+        spans = torch.clamp(spans, min=degree, max=n_control_points - 1)
+
+        min_span = torch.full_like(spans, degree)
+        max_span = torch.full_like(spans, n_control_points - 1)
+        spans = torch.where(u <= k_min + _BSplineFunction.ZERO_TOLERANCE, min_span, spans)
+        spans = torch.where(u >= k_max - _BSplineFunction.ZERO_TOLERANCE, max_span, spans)
+        return spans, step
+
+    @staticmethod
+    def _uniform_knot_value(
+        idx: torch.Tensor, degree: int, n_control_points: int, k_min: torch.Tensor, step: torch.Tensor
+    ) -> torch.Tensor:
+        max_offset = n_control_points - degree
+        offset = (idx - degree).clamp(min=0, max=max_offset)
+        return k_min + offset.to(step.dtype) * step
+
+    @staticmethod
+    def cox_de_boor_uniform(
+        u: torch.Tensor,
+        spans: torch.Tensor,
+        degree: int,
+        n_control_points: int,
+        k_min: torch.Tensor,
+        step: torch.Tensor,
+    ) -> torch.Tensor:
+        num_samples_n, num_curves_m = u.shape
+        device, dtype = u.device, u.dtype
+
+        batch_nonzero_basis = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
+        left_dist_all_p = torch.empty_like(batch_nonzero_basis)
+        right_dist_all_p = torch.empty_like(batch_nonzero_basis)
+        zero = torch.tensor(0, dtype=dtype, device=device)
+
+        batch_nonzero_basis[..., 0].fill_(1)
+
+        for p_iter in range(1, degree + 1):
+            idx_knot_left = spans + 1 - p_iter
+            idx_knot_right = spans + p_iter
+
+            left_knot = _BSplineFunction._uniform_knot_value(idx_knot_left, degree, n_control_points, k_min, step)
+            right_knot = _BSplineFunction._uniform_knot_value(idx_knot_right, degree, n_control_points, k_min, step)
+
+            left_dist_all_p[..., p_iter] = u - left_knot
+            right_dist_all_p[..., p_iter] = right_knot - u
+
+            saved_val = zero
+            for r_iter in range(p_iter):
+                denominator_batch = right_dist_all_p[..., r_iter + 1] + left_dist_all_p[..., p_iter - r_iter]
+
+                ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
+                ratios.nan_to_num_(0, 0, 0)
+
+                batch_nonzero_basis[..., r_iter] = torch.addcmul(saved_val, right_dist_all_p[..., r_iter + 1], ratios)
+                saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
+
+            batch_nonzero_basis[..., p_iter] = saved_val
+        return batch_nonzero_basis
+
+    @staticmethod
     def find_spans(u: torch.Tensor, knots: torch.Tensor, degree: int, n_control_points: int) -> torch.Tensor:
         """Find the knot span index for each parameter value (vectorized).
 
@@ -264,6 +352,7 @@ class _BSplineFunction(torch.autograd.Function):
         control_points: torch.Tensor,  # shape (M, C, D)
         knots: torch.Tensor,  # shape (num_total_knots,)
         degree: int,
+        uniform: bool,
     ) -> torch.Tensor:
         # M_cp = control_points.shape[0] # Number of curves from control_points
         # N_u, M_u = u.shape             # N samples, M curves from u
@@ -271,8 +360,16 @@ class _BSplineFunction(torch.autograd.Function):
 
         n_control_points_per_curve = control_points.shape[1]  # C
 
-        spans = _BSplineFunction.find_spans(u, knots, degree, n_control_points_per_curve)  # (N,M)
-        basis_funcs = _BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,degree+1)
+        if uniform:
+            k_min = knots[degree]
+            k_max = knots[n_control_points_per_curve]
+            spans, step = _BSplineFunction._uniform_span_step(u, degree, n_control_points_per_curve, k_min, k_max)
+            basis_funcs = _BSplineFunction.cox_de_boor_uniform(
+                u, spans, degree, n_control_points_per_curve, k_min, step
+            )
+        else:
+            spans = _BSplineFunction.find_spans(u, knots, degree, n_control_points_per_curve)  # (N,M)
+            basis_funcs = _BSplineFunction.cox_de_boor(u, knots, spans, degree)  # (N,M,degree+1)
         points = _BSplineFunction.evaluate_curve(basis_funcs, control_points, spans, degree)  # (N,M,D)
 
         ctx.save_for_backward(u, control_points, knots, spans, basis_funcs)
@@ -286,7 +383,9 @@ class _BSplineFunction(torch.autograd.Function):
         return points
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None]:  # type: ignore
+    def backward(
+        ctx, grad_output: torch.Tensor
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None, None]:  # type: ignore
         # grad_output shape: (N, M, D)
         u, control_points, knots, spans, basis_funcs = ctx.saved_tensors
         # u: (N,M), control_points: (M,C,D), knots: (K,), spans: (N,M), basis_funcs: (N,M,deg+1)
@@ -349,7 +448,7 @@ class _BSplineFunction(torch.autograd.Function):
             # Scatter add along dimension C (index 1)
             grad_control_points.scatter_add_(1, idx_expanded_for_scatter, uv_flat)
 
-        return grad_u, grad_control_points, None, None
+        return grad_u, grad_control_points, None, None, None
 
 
 def bspline_curves(
@@ -375,11 +474,17 @@ def bspline_curves(
         A tensor of size :math:`(B, C, D)`, representing a mini-batch of size :math:`B`, corresponding to samples from
         :math:`C` curves in :math:`\mathbb{R}^D`.
 
+    Note:
+        Uses a fast path when the knot vector is uniformly spaced and clamped.
+
     """
+    n_control_points = control_points.shape[1]
     if knots is None:
-        n_control_points = control_points.shape[1]
         knots = uniform_augmented_knots(
             n_control_points, degree, dtype=control_points.dtype, device=control_points.device
         )
+        uniform = True
+    else:
+        uniform = _BSplineFunction._is_uniform_knots(knots, degree, n_control_points)
 
-    return _BSplineFunction.apply(u, control_points, knots, degree)
+    return _BSplineFunction.apply(u, control_points, knots, degree, uniform)

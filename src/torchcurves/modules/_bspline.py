@@ -29,6 +29,9 @@ class BSplineCurve(nn.Module):
         normalize_fn: Normalization method layer's input. (default: "rational")
         normalization_scale: Scale factor for normalization (default: 1.0).
 
+    Note:
+        Uses a fast path when the knot vector is uniformly spaced and clamped.
+
     """
 
     knots: torch.Tensor  # explicit annotation for type-checking
