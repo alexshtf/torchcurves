@@ -58,28 +58,6 @@ class _BSplineFunction(torch.autograd.Function):
     """Custom autograd function for B-spline evaluation and differentiation (Vectorized for multiple curves)."""
 
     @staticmethod
-    def _is_uniform_knots(
-        knots: torch.Tensor, degree: int, n_control_points: int, atol: float = 1e-6, rtol: float = 1e-6
-    ) -> bool:
-        if knots.ndim != 1 or n_control_points <= degree:
-            return False
-
-        k_min = knots[degree]
-        k_max = knots[n_control_points]
-        if not (
-            torch.allclose(knots[: degree + 1], k_min, atol=atol, rtol=rtol)
-            and torch.allclose(knots[n_control_points:], k_max, atol=atol, rtol=rtol)
-        ):
-            return False
-
-        internal = knots[degree : n_control_points + 1]
-        if internal.numel() <= 1:
-            return True
-
-        diffs = internal[1:] - internal[:-1]
-        return torch.allclose(diffs, diffs[0], atol=atol, rtol=rtol)
-
-    @staticmethod
     def _uniform_span_step(
         u: torch.Tensor, degree: int, n_control_points: int, k_min: torch.Tensor, k_max: torch.Tensor
     ) -> Tuple[torch.Tensor, torch.Tensor]:
@@ -475,7 +453,7 @@ def bspline_curves(
         :math:`C` curves in :math:`\mathbb{R}^D`.
 
     Note:
-        Uses a fast path when the knot vector is uniformly spaced and clamped.
+        Uses a fast path when the default knot configuration is used.
 
     """
     n_control_points = control_points.shape[1]
@@ -485,6 +463,5 @@ def bspline_curves(
         )
         uniform = True
     else:
-        uniform = _BSplineFunction._is_uniform_knots(knots, degree, n_control_points)
-
+        uniform = False
     return _BSplineFunction.apply(u, control_points, knots, degree, uniform)

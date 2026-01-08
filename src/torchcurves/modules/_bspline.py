@@ -30,7 +30,7 @@ class BSplineCurve(nn.Module):
         normalization_scale: Scale factor for normalization (default: 1.0).
 
     Note:
-        Uses a fast path when the knot vector is uniformly spaced and clamped.
+        Uses a fast path when the default knot configuration is used.
 
     """
 

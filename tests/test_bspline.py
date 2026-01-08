@@ -5,7 +5,6 @@ import torch
 import torch.nn as nn
 
 from torchcurves import BSplineCurve
-from torchcurves.functional import _bspline as bspline_impl
 from torchcurves.functional import bspline_curves
 
 
@@ -339,18 +338,6 @@ class TestBSplineFunction(unittest.TestCase):
                 nondet_tol=1e-7,
             )
         )
-
-    def test_uniform_knot_detection(self):
-        degree = 3
-        n_control_points = 7
-        knots = self.generate_clamped_knot_vector(
-            n_control_points, degree, device=self.device, dtype=self.default_dtype
-        )
-        self.assertTrue(bspline_impl._BSplineFunction._is_uniform_knots(knots, degree, n_control_points))
-
-        knots_perturbed = knots.clone()
-        knots_perturbed[degree + 1] = knots_perturbed[degree + 1] + 0.1
-        self.assertFalse(bspline_impl._BSplineFunction._is_uniform_knots(knots_perturbed, degree, n_control_points))
 
     def test_multiple_curves_equivalence(self):
         num_curves_m = 3
