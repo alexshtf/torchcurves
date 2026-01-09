@@ -17,34 +17,29 @@ def _clenshaw_segment(
     coeffs_chunk: torch.Tensor,
     x_expanded: torch.Tensor,
     k0: int,
+    reverse: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    for i in range(coeffs_chunk.shape[0]):
+    count = coeffs_chunk.shape[0]
+    start = count - 1 if reverse else 0
+    stop = -1 if reverse else count
+    step = -1 if reverse else 1
+    for i, idx in enumerate(range(start, stop, step)):
         k = k0 - i
         alpha = (2 * k + 1) / (k + 1)
         beta = (k + 1) / (k + 2)
-        curr_coef = coeffs_chunk[i].unsqueeze(0)
-        b1_next = torch.add(
-            torch.addcmul(curr_coef, x_expanded, b1, value=alpha), b2, alpha=-beta
-        )
+        curr_coef = coeffs_chunk[idx].unsqueeze(0)
+        b1_next = torch.add(torch.addcmul(curr_coef, x_expanded, b1, value=alpha), b2, alpha=-beta)
         b2, b1 = b1, b1_next
     return b1, b2
 
 
 def _legendre_clenshaw(x: torch.Tensor, coefficients: torch.Tensor) -> torch.Tensor:
-    n, c, m = (
-        coefficients.shape
-    )  # n - number of coefficients, c - number of curves, m - curve dimension
+    n, c, m = coefficients.shape  # n - number of coefficients, c - number of curves, m - curve dimension
     x = x.unsqueeze(-1).expand(-1, -1, m)  # (b × c × m), b = batch size
     b2 = torch.zeros_like(x)  # (b × c × m)
     b1 = torch.zeros_like(x)  # (b × c × m)
-    for k in reversed(range(n)):
-        alpha = (2 * k + 1) / (k + 1)
-        beta = (k + 1) / (k + 2)
-        curr_coef = coefficients[k].unsqueeze(0)  # (1 x c x m)
-        b1_next = torch.add(
-            torch.addcmul(curr_coef, x, b1, value=alpha), b2, alpha=-beta
-        )
-        b2, b1 = b1, b1_next
+    # curr_coef = coefficients[k].unsqueeze(0)  # (1 x c x m)
+    b1, _ = _clenshaw_segment(b1, b2, coefficients, x, n - 1, reverse=True)
     return b1
 
 
@@ -70,9 +65,7 @@ def legendre_curves(
         the :math:`B` and :math:`D` dimensions, but the algorithm requires a loop over the polynomial degree.
 
     """
-    if checkpoint_segments is not None and (
-        not isinstance(checkpoint_segments, int) or checkpoint_segments <= 0
-    ):
+    if checkpoint_segments is not None and (not isinstance(checkpoint_segments, int) or checkpoint_segments <= 0):
         raise ValueError("checkpoint_segments must be a positive integer or None.")
     if checkpoint_segments is None or not torch.is_grad_enabled():
         return _legendre_clenshaw(x, coefficients)
