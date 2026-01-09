@@ -90,48 +90,6 @@ class _BSplineFunction(torch.autograd.Function):
         return k_min + offset.to(step.dtype) * step
 
     @staticmethod
-    def cox_de_boor_uniform(
-        u: torch.Tensor,
-        spans: torch.Tensor,
-        degree: int,
-        n_control_points: int,
-        k_min: torch.Tensor,
-        step: torch.Tensor,
-    ) -> torch.Tensor:
-        num_samples_n, num_curves_m = u.shape
-        device, dtype = u.device, u.dtype
-
-        batch_nonzero_basis = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
-        left_dist_all_p = torch.empty_like(batch_nonzero_basis)
-        right_dist_all_p = torch.empty_like(batch_nonzero_basis)
-        zero = torch.tensor(0, dtype=dtype, device=device)
-
-        batch_nonzero_basis[..., 0].fill_(1)
-
-        for p_iter in range(1, degree + 1):
-            idx_knot_left = spans + 1 - p_iter
-            idx_knot_right = spans + p_iter
-
-            left_knot = _BSplineFunction._uniform_knot_value(idx_knot_left, degree, n_control_points, k_min, step)
-            right_knot = _BSplineFunction._uniform_knot_value(idx_knot_right, degree, n_control_points, k_min, step)
-
-            left_dist_all_p[..., p_iter] = u - left_knot
-            right_dist_all_p[..., p_iter] = right_knot - u
-
-            saved_val = zero
-            for r_iter in range(p_iter):
-                denominator_batch = right_dist_all_p[..., r_iter + 1] + left_dist_all_p[..., p_iter - r_iter]
-
-                ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
-                ratios.nan_to_num_(0, 0, 0)
-
-                batch_nonzero_basis[..., r_iter] = torch.addcmul(saved_val, right_dist_all_p[..., r_iter + 1], ratios)
-                saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
-
-            batch_nonzero_basis[..., p_iter] = saved_val
-        return batch_nonzero_basis
-
-    @staticmethod
     def find_spans(u: torch.Tensor, knots: torch.Tensor, degree: int, n_control_points: int) -> torch.Tensor:
         """Find the knot span index for each parameter value (vectorized).
 
@@ -170,7 +128,17 @@ class _BSplineFunction(torch.autograd.Function):
         return spans
 
     @staticmethod
-    def cox_de_boor(u: torch.Tensor, knots: torch.Tensor, spans: torch.Tensor, degree: int) -> torch.Tensor:
+    def cox_de_boor(
+        u: torch.Tensor,
+        knots: torch.Tensor,
+        spans: torch.Tensor,
+        degree: int,
+        *,
+        uniform: bool = False,
+        n_control_points: Optional[int] = None,
+        k_min: Optional[torch.Tensor] = None,
+        step: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
         """Compute B-spline basis functions using Cox-de Boor recursion.
 
         Args:
@@ -178,6 +146,10 @@ class _BSplineFunction(torch.autograd.Function):
             knots: Knot vector, shape (num_total_knots,).
             spans: Knot span indices, shape (N, M). `spans[n,m]` is `s`.
             degree: B-spline degree (p).
+            uniform: Whether to use the uniform-knot fast path.
+            n_control_points: Number of control points per curve (required when uniform=True).
+            k_min: Minimum knot value (required when uniform=True).
+            step: Uniform knot spacing (required when uniform=True).
 
         Returns:
             Basis function values N_batch, shape (N, M, degree+1).
@@ -186,6 +158,13 @@ class _BSplineFunction(torch.autograd.Function):
         """
         num_samples_n, num_curves_m = u.shape
         device, dtype = u.device, u.dtype
+
+        if uniform:
+            if n_control_points is None or k_min is None or step is None:
+                raise ValueError("Uniform knot evaluation requires n_control_points, k_min, and step.")
+            n_control_points_i = n_control_points
+            k_min_t = k_min
+            step_t = step
 
         # batch_nonzero_basis[n, m, k] will store B_{spans[n,m]-degree+k, degree}(u[n,m])
         batch_nonzero_basis = torch.zeros(num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype)
@@ -196,16 +175,28 @@ class _BSplineFunction(torch.autograd.Function):
 
         batch_nonzero_basis[..., 0].fill_(1)
 
+        max_knot_idx = knots.shape[0] - 1
         for p_iter in range(1, degree + 1):  # p_iter is 'j' in Piegl & Tiller A2.2
             # knots is 1D. We gather using indices derived from spans (N,M)
             # Resulting shapes for left_dist_all_p, etc. will be (N,M)
             idx_knot_left = spans + 1 - p_iter
-            idx_knot_left.clamp_(min=0, max=knots.shape[0] - 1)
-            left_dist_all_p[..., p_iter] = u - knots[idx_knot_left]
-
             idx_knot_right = spans + p_iter
-            idx_knot_right.clamp_(min=0, max=knots.shape[0] - 1)
-            right_dist_all_p[..., p_iter] = knots[idx_knot_right] - u
+
+            if uniform:
+                left_knot = _BSplineFunction._uniform_knot_value(
+                    idx_knot_left, degree, n_control_points_i, k_min_t, step_t
+                )
+                right_knot = _BSplineFunction._uniform_knot_value(
+                    idx_knot_right, degree, n_control_points_i, k_min_t, step_t
+                )
+            else:
+                idx_knot_left = idx_knot_left.clamp(min=0, max=max_knot_idx)
+                idx_knot_right = idx_knot_right.clamp(min=0, max=max_knot_idx)
+                left_knot = knots[idx_knot_left]
+                right_knot = knots[idx_knot_right]
+
+            left_dist_all_p[..., p_iter] = u - left_knot
+            right_dist_all_p[..., p_iter] = right_knot - u
 
             saved_val = zero
             for r_iter in range(p_iter):
@@ -350,8 +341,15 @@ class _BSplineFunction(torch.autograd.Function):
             k_min = knots[degree]
             k_max = knots[n_control_points_per_curve]
             spans, step = _BSplineFunction._uniform_span_step(u, degree, n_control_points_per_curve, k_min, k_max)
-            basis_funcs = _BSplineFunction.cox_de_boor_uniform(
-                u, spans, degree, n_control_points_per_curve, k_min, step
+            basis_funcs = _BSplineFunction.cox_de_boor(
+                u,
+                knots,
+                spans,
+                degree,
+                uniform=True,
+                n_control_points=n_control_points_per_curve,
+                k_min=k_min,
+                step=step,
             )
         else:
             spans = _BSplineFunction.find_spans(u, knots, degree, n_control_points_per_curve)  # (N,M)
