@@ -280,6 +280,21 @@ def erf_clamp(x: Tensor, scale: float = 1, out_min: float = -1, out_max: float =
 tc.BSplineCurve(num_curves, curve_dim, normalize_fn=erf_clamp, normalization_scale=s)
 ```
 
+### Gradient checkpointing for Legendre curves
+
+For large degrees, the backward pass can be memory-intensive. Use
+`checkpoint_segments` to trade compute for memory. Larger values create more
+segments (lower memory, higher compute). Set to `None` to disable. Checkpointing
+is applied only when gradients are enabled.
+
+```python
+# Functional API
+tc.functional.legendre_curves(x, coeffs, checkpoint_segments=4)
+
+# Module API
+tc.LegendreCurve(num_curves, curve_dim, degree=degree, checkpoint_segments=4)
+```
+
 ### Example: B-Spline KAN with clamping
 
 A KAN based on rationally scaled B-Spline basis with the default scale of $s=1$:

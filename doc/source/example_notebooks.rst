@@ -6,6 +6,7 @@ Example notebooks
 
     examples/draw_bspline
     examples/draw_legendre
+    examples/legendre_checkpointing
     examples/factorization_machine
     examples/monotone_functions
     examples/kan_bspline_rat

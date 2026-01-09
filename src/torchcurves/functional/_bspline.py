@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Any, Optional, Tuple, Union
 
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -59,7 +59,11 @@ class _BSplineFunction(torch.autograd.Function):
 
     @staticmethod
     def _uniform_span_step(
-        u: torch.Tensor, degree: int, n_control_points: int, k_min: torch.Tensor, k_max: torch.Tensor
+        u: torch.Tensor,
+        degree: int,
+        n_control_points: int,
+        k_min: torch.Tensor,
+        k_max: torch.Tensor,
     ) -> Tuple[torch.Tensor, torch.Tensor]:
         num_spans = n_control_points - degree
         step = (k_max - k_min) / num_spans
@@ -75,7 +79,11 @@ class _BSplineFunction(torch.autograd.Function):
 
     @staticmethod
     def _uniform_knot_value(
-        idx: torch.Tensor, degree: int, n_control_points: int, k_min: torch.Tensor, step: torch.Tensor
+        idx: torch.Tensor,
+        degree: int,
+        n_control_points: int,
+        k_min: torch.Tensor,
+        step: torch.Tensor,
     ) -> torch.Tensor:
         max_offset = n_control_points - degree
         offset = (idx - degree).clamp(min=0, max=max_offset)
@@ -362,8 +370,9 @@ class _BSplineFunction(torch.autograd.Function):
 
     @staticmethod
     def backward(
-        ctx, grad_output: torch.Tensor
-    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None, None]:  # type: ignore
+        ctx: Any, *grad_outputs: Any
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None, None]:
+        grad_output = grad_outputs[0]
         # grad_output shape: (N, M, D)
         u, control_points, knots, spans, basis_funcs = ctx.saved_tensors
         # u: (N,M), control_points: (M,C,D), knots: (K,), spans: (N,M), basis_funcs: (N,M,deg+1)
@@ -430,7 +439,10 @@ class _BSplineFunction(torch.autograd.Function):
 
 
 def bspline_curves(
-    u: torch.Tensor, control_points: torch.Tensor, knots: Optional[torch.Tensor] = None, degree: int = 3
+    u: torch.Tensor,
+    control_points: torch.Tensor,
+    knots: Optional[torch.Tensor] = None,
+    degree: int = 3,
 ) -> torch.Tensor:
     r"""Evaluate multiple B-Spline curves, each with its own control points, sharing the same knots and degree.
 
@@ -459,7 +471,10 @@ def bspline_curves(
     n_control_points = control_points.shape[1]
     if knots is None:
         knots = uniform_augmented_knots(
-            n_control_points, degree, dtype=control_points.dtype, device=control_points.device
+            n_control_points,
+            degree,
+            dtype=control_points.dtype,
+            device=control_points.device,
         )
         uniform = True
     else:

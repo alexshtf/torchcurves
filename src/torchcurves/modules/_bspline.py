@@ -96,7 +96,9 @@ class BSplineCurve(nn.Module):
         if isinstance(knots_config, int):
             # Knots are shared by all m curves
             knot_buffer = uniform_augmented_knots(
-                self.n_control_points_per_curve, self.degree, dtype=self.control_points.dtype
+                self.n_control_points_per_curve,
+                self.degree,
+                dtype=self.control_points.dtype,
             )
         else:  # knots_config is a torch.Tensor
             knot_buffer = knots_config.to(dtype=self.control_points.dtype, copy=True)
