@@ -38,8 +38,12 @@ class BSplineCurve(nn.Module):
         num_curves: int,
         dim: int,
         degree: int = 3,
-        knots_config: Union[int, torch.Tensor] = 10,  # This is n_control_points_per_curve
-        normalize_fn: Union[Literal["clamp", "rational", "arctan"], NormalizationFn] = "rational",
+        knots_config: Union[
+            int, torch.Tensor
+        ] = 10,  # This is n_control_points_per_curve
+        normalize_fn: Union[
+            Literal["clamp", "rational", "arctan"], NormalizationFn
+        ] = "rational",
         normalization_scale: float = 1.0,
     ):
         super().__init__()
@@ -65,7 +69,9 @@ class BSplineCurve(nn.Module):
 
         self.normalization_scale = normalization_scale
         if self.normalization_scale <= 0:
-            raise ValueError(f"Normalization scale must be positive, but {normalization_scale} was given.")
+            raise ValueError(
+                f"Normalization scale must be positive, but {normalization_scale} was given."
+            )
 
         if isinstance(knots_config, int):
             n_control_points_per_curve = knots_config  # c
@@ -87,13 +93,17 @@ class BSplineCurve(nn.Module):
         self.n_control_points_per_curve = n_control_points_per_curve  # c
 
         # Control points shape: (m, c, d)
-        self.control_points = nn.Parameter(torch.empty(self.num_curves, self.n_control_points_per_curve, self.dim))
+        self.control_points = nn.Parameter(
+            torch.empty(self.num_curves, self.n_control_points_per_curve, self.dim)
+        )
         nn.init.xavier_uniform_(self.control_points)
 
         if isinstance(knots_config, int):
             # Knots are shared by all m curves
             knot_buffer = uniform_augmented_knots(
-                self.n_control_points_per_curve, self.degree, dtype=self.control_points.dtype
+                self.n_control_points_per_curve,
+                self.degree,
+                dtype=self.control_points.dtype,
             )
         else:  # knots_config is a torch.Tensor
             knot_buffer = knots_config.to(dtype=self.control_points.dtype, copy=True)
@@ -114,7 +124,9 @@ class BSplineCurve(nn.Module):
         )
 
     def _prepare_arg(self, u: torch.Tensor) -> torch.Tensor:
-        return self.normalize_fn(u, self.normalization_scale, out_min=self._knot_min, out_max=self._knot_max)
+        return self.normalize_fn(
+            u, self.normalization_scale, out_min=self._knot_min, out_max=self._knot_max
+        )
 
     def forward(self, u: torch.Tensor):
         """Evaluate a batch of B-spline curves.
