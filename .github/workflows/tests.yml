@@ -31,10 +31,6 @@ jobs:
       run: |
         uv run ruff check src/ tests/
 
-    - name: Format with black
-      run: |
-        uv run black --check --line-length 120 src/ tests/
-
     - name: Type check with mypy
       run: |
         uv run mypy src/

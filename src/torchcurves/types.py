@@ -25,4 +25,6 @@ class NormalizationFn(Protocol):
 
     """
 
-    def __call__(self, x: TensorLike, scale: float, out_min: float, out_max: float) -> torch.Tensor: ...
+    def __call__(
+        self, x: TensorLike, scale: float, out_min: float, out_max: float
+    ) -> torch.Tensor: ...
