@@ -4,6 +4,7 @@ __pycache__/
 *$py.class
 *.so
 .Python
+AGENTS.md
 build/
 develop-eggs/
 dist/
