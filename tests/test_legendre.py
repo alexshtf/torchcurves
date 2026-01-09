@@ -63,7 +63,11 @@ class TestLegendreCurveModule(unittest.TestCase):
         num_curves = 2
         dim = 3
         degree = 4
-        module = LegendreCurve(num_curves, dim, degree).to(self.device).to(self.default_dtype)
+        module = (
+            LegendreCurve(num_curves, dim, degree)
+            .to(self.device)
+            .to(self.default_dtype)
+        )
 
         self.assertEqual(module.num_curves, num_curves)
         self.assertEqual(module.dim, dim)
@@ -93,10 +97,20 @@ class TestLegendreCurveModule(unittest.TestCase):
         degree = 2
         n_samples = 10
 
-        module = LegendreCurve(num_curves, dim, degree).to(self.device).to(self.default_dtype)
+        module = (
+            LegendreCurve(num_curves, dim, degree)
+            .to(self.device)
+            .to(self.default_dtype)
+        )
 
         # u: (N, M)
-        u_input = torch.rand(n_samples, num_curves, device=self.device, dtype=self.default_dtype) * 2 - 1  # in [-1,1]
+        u_input = (
+            torch.rand(
+                n_samples, num_curves, device=self.device, dtype=self.default_dtype
+            )
+            * 2
+            - 1
+        )  # in [-1,1]
 
         points = module(u_input)  # Output (N, M, D)
 
@@ -110,8 +124,14 @@ class TestLegendreCurveModule(unittest.TestCase):
         degree = 3
         n_samples = 6
 
-        module = LegendreCurve(num_curves, dim, degree, checkpoint_segments=2).to(self.device).to(self.default_dtype)
-        u_input = torch.rand(n_samples, num_curves, device=self.device, dtype=self.default_dtype)
+        module = (
+            LegendreCurve(num_curves, dim, degree, checkpoint_segments=2)
+            .to(self.device)
+            .to(self.default_dtype)
+        )
+        u_input = torch.rand(
+            n_samples, num_curves, device=self.device, dtype=self.default_dtype
+        )
         points = module(u_input)
 
         self.assertEqual(points.shape, (n_samples, num_curves, dim))
@@ -123,9 +143,15 @@ class TestLegendreCurveModule(unittest.TestCase):
         dim = 2
         degree = 3
         n_samples = 5
-        module = LegendreCurve(num_curves, dim, degree).to(self.device).to(self.default_dtype)
+        module = (
+            LegendreCurve(num_curves, dim, degree)
+            .to(self.device)
+            .to(self.default_dtype)
+        )
 
-        u_input = torch.rand(n_samples, num_curves, device=self.device, dtype=self.default_dtype).requires_grad_(True)
+        u_input = torch.rand(
+            n_samples, num_curves, device=self.device, dtype=self.default_dtype
+        ).requires_grad_(True)
 
         self.assertIsNone(module.coefficients.grad)
 
@@ -151,7 +177,9 @@ class TestLegendreCurveModule(unittest.TestCase):
             .to(self.default_dtype)
         )
 
-        u_input = torch.rand(n_samples, num_curves, device=self.device, dtype=self.default_dtype).requires_grad_(True)
+        u_input = torch.rand(
+            n_samples, num_curves, device=self.device, dtype=self.default_dtype
+        ).requires_grad_(True)
 
         points = module(u_input)
         loss = points.sum()
@@ -174,7 +202,9 @@ class TestLegendreCurveModule(unittest.TestCase):
         module_cuda = module_cpu.to("cuda").to(self.default_dtype)
         self.assertEqual(module_cuda.coefficients.device.type, "cuda")
 
-        u_cuda = torch.rand(5, num_curves, device="cuda", dtype=self.default_dtype) * 2 - 1
+        u_cuda = (
+            torch.rand(5, num_curves, device="cuda", dtype=self.default_dtype) * 2 - 1
+        )
         points = module_cuda(u_cuda)
 
         self.assertEqual(points.device.type, "cuda")

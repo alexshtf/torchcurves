@@ -23,13 +23,17 @@ def _clenshaw_segment(
         alpha = (2 * k + 1) / (k + 1)
         beta = (k + 1) / (k + 2)
         curr_coef = coeffs_chunk[i].unsqueeze(0)
-        b1_next = torch.add(torch.addcmul(curr_coef, x_expanded, b1, value=alpha), b2, alpha=-beta)
+        b1_next = torch.add(
+            torch.addcmul(curr_coef, x_expanded, b1, value=alpha), b2, alpha=-beta
+        )
         b2, b1 = b1, b1_next
     return b1, b2
 
 
 def _legendre_clenshaw(x: torch.Tensor, coefficients: torch.Tensor) -> torch.Tensor:
-    n, c, m = coefficients.shape  # n - number of coefficients, c - number of curves, m - curve dimension
+    n, c, m = (
+        coefficients.shape
+    )  # n - number of coefficients, c - number of curves, m - curve dimension
     x = x.unsqueeze(-1).expand(-1, -1, m)  # (b × c × m), b = batch size
     b2 = torch.zeros_like(x)  # (b × c × m)
     b1 = torch.zeros_like(x)  # (b × c × m)
@@ -37,7 +41,9 @@ def _legendre_clenshaw(x: torch.Tensor, coefficients: torch.Tensor) -> torch.Ten
         alpha = (2 * k + 1) / (k + 1)
         beta = (k + 1) / (k + 2)
         curr_coef = coefficients[k].unsqueeze(0)  # (1 x c x m)
-        b1_next = torch.add(torch.addcmul(curr_coef, x, b1, value=alpha), b2, alpha=-beta)
+        b1_next = torch.add(
+            torch.addcmul(curr_coef, x, b1, value=alpha), b2, alpha=-beta
+        )
         b2, b1 = b1, b1_next
     return b1
 
@@ -64,9 +70,10 @@ def legendre_curves(
         the :math:`B` and :math:`D` dimensions, but the algorithm requires a loop over the polynomial degree.
 
     """
-    if checkpoint_segments is not None:
-        if not isinstance(checkpoint_segments, int) or checkpoint_segments <= 0:
-            raise ValueError("checkpoint_segments must be a positive integer or None.")
+    if checkpoint_segments is not None and (
+        not isinstance(checkpoint_segments, int) or checkpoint_segments <= 0
+    ):
+        raise ValueError("checkpoint_segments must be a positive integer or None.")
     if checkpoint_segments is None or not torch.is_grad_enabled():
         return _legendre_clenshaw(x, coefficients)
     if not (x.requires_grad or coefficients.requires_grad):
