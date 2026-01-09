@@ -1,4 +1,4 @@
-from typing import Literal, Union
+from typing import Literal, Optional, Union
 
 import torch
 import torch.nn as nn
@@ -31,6 +31,9 @@ class LegendreCurve(nn.Module):
             Normalization method this layer's input. (default: "rational")
         normalization_scale (float):
             Scale factor for normalization (default: 1.0).
+        checkpoint_segments:
+            Optional number of segments for gradient checkpointing. Larger values save memory but increase compute.
+            Only used when gradients are enabled.
 
     """
 
@@ -41,6 +44,7 @@ class LegendreCurve(nn.Module):
         degree: int,
         normalize_fn: Union[Literal["clamp", "rational", "arctan"], NormalizationFn] = "rational",
         normalization_scale: float = 1.0,
+        checkpoint_segments: Optional[int] = None,
     ):
         super().__init__()
 
@@ -50,6 +54,9 @@ class LegendreCurve(nn.Module):
             raise ValueError("dim must be a positive integer.")
         if not isinstance(degree, int) or degree < 0:
             raise ValueError("degree must be a non-negative integer.")
+        if checkpoint_segments is not None:
+            if not isinstance(checkpoint_segments, int) or checkpoint_segments <= 0:
+                raise ValueError("checkpoint_segments must be a positive integer or None.")
 
         self.num_curves = num_curves  # M
         self.dim = dim  # D
@@ -67,6 +74,8 @@ class LegendreCurve(nn.Module):
         self.normalization_scale = normalization_scale
         if self.normalization_scale <= 0:
             raise ValueError(f"Normalization scale must be positive, but {normalization_scale} was given.")
+
+        self.checkpoint_segments = checkpoint_segments
 
         # Coefficients shape: (M, C, D)
         self.coefficients = nn.Parameter(torch.empty(self.n_coefficients, self.num_curves, self.dim))
@@ -89,12 +98,13 @@ class LegendreCurve(nn.Module):
             )
 
         u_normalized = self.normalize_fn(u, self.normalization_scale, out_min=-1.0, out_max=1.0)
-        return legendre_curves(u_normalized, self.coefficients)
+        return legendre_curves(u_normalized, self.coefficients, checkpoint_segments=self.checkpoint_segments)
 
     def __repr__(self):
         return (
             f"{self.__class__.__name__}("
             f"num_curves={self.num_curves}, "
             f"dim={self.dim}, degree={self.degree}, "
-            f"n_coefficients_per_curve={self.n_coefficients})"
+            f"n_coefficients_per_curve={self.n_coefficients}, "
+            f"checkpoint_segments={self.checkpoint_segments})"
         )
