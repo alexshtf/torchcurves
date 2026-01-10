@@ -18,6 +18,12 @@ repos:
     # Run the formatter.
     - id: ruff-format
       types_or: [ python, pyi ]
+- repo: https://github.com/pre-commit/mirrors-pyright
+  rev: v1.1.351
+  hooks:
+    - id: pyright
+      args: [ src ]
+      pass_filenames: false
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.5.25
   hooks:

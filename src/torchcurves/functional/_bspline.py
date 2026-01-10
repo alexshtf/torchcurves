@@ -1,4 +1,4 @@
-from typing import Optional, Tuple, Union
+from typing import Optional, Tuple, Union, cast
 
 import torch
 import torch.nn.functional as F  # noqa: N812
@@ -447,4 +447,4 @@ def bspline_curves(
             device=control_points.device,
         )
 
-    return _BSplineFunction.apply(u, control_points, knots, degree)
+    return cast(torch.Tensor, _BSplineFunction.apply(u, control_points, knots, degree))
