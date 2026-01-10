@@ -1,14 +1,16 @@
-from typing import Optional
+from typing import Callable, Optional, TypeVar, cast
 
 import torch
 import torch.utils.checkpoint as checkpoint
 
+TCheckpoint = TypeVar("TCheckpoint")
 
-def _checkpoint(fn, *args):
+
+def _checkpoint(fn: Callable[..., TCheckpoint], *args: torch.Tensor) -> TCheckpoint:
     try:
-        return checkpoint.checkpoint(fn, *args, use_reentrant=False)
+        return cast(TCheckpoint, checkpoint.checkpoint(fn, *args, use_reentrant=False))
     except TypeError:
-        return checkpoint.checkpoint(fn, *args)
+        return cast(TCheckpoint, checkpoint.checkpoint(fn, *args))
 
 
 def _clenshaw_segment(

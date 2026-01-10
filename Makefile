@@ -21,7 +21,7 @@ bmark_cmp:
 
 lint:
 	uv run ruff check .
-	uv run mypy src
+	uv run pyright src
 
 pre-commit:
 	uv run pre-commit install
