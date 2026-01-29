@@ -431,6 +431,23 @@ If you use this package in your research, please cite:
 }
 ```
 
+## Related software
+
+Several well-maintained PyTorch libraries use splines in practice. They mostly target *interpolation/resampling* or *geometric warping* rather than providing a generic, drop-in learnable parametric curve layer.
+
+### ND interpolation and resampling
+- **[torch-interpol](https://github.com/balbasty/torch-interpol)** (also on **[PyPI](https://pypi.org/project/torch-interpol/)**) implements high-order spline interpolation for **ND tensors** (e.g., 2D/3D images), with TorchScript acceleration and explicit forward/backward implementations. It is primarily designed for resampling under a sampling grid / deformation-field workflows, including dimension-specific interpolation orders and boundary handling (`bound`). *Best suited for resampling tensor data on fixed grids.* 
+
+- **[xitorch – `Interp1D`](https://xitorch.readthedocs.io/en/latest/api/xitorch_interpolate/Interp1D.html)** (repo: **[xitorch/xitorch](https://github.com/xitorch/xitorch)**) provides differentiable **1D interpolation** including cubic splines (`method="cspline"`) for non-uniform sample locations with configurable boundary conditions and extrapolation options. This is an interpolation primitive: you provide `(x, y)` samples and query at `xq`. *Designed as a functional primitive for data interpolation.* 
+
+### Learnable continuous fields via grids
+- **[torch-cubic-spline-grids](https://github.com/alisterburt/torch-cubic-spline-grids)** (also on **[PyPI](https://pypi.org/project/torch-cubic-spline-grids/)**) provides learnable, continuous parametrisations of **1–4D spaces** using **uniform grids** whose coordinate system spans `[0, 1]` along each dimension. It supports both cubic **B-spline** grids (C2, not interpolating) and cubic **Catmull–Rom** grids (C1, interpolating), which are well suited to learning smooth spatial/temporal fields (e.g., deformation fields). *Targets dense continuous fields rather than curve trajectories.* 
+
+### Thin-plate / polyharmonic spline warping
+- **[torch-tps](https://github.com/raphaelreme/torch-tps)** (also on **[PyPI](https://pypi.org/project/torch-tps/)**) implements generalized **polyharmonic spline** interpolation (thin-plate splines in 2D) for learning smooth mappings between Euclidean spaces from control point correspondences, with configurable spline order and regularization. *Specializes in spatial warping and point-set registration.* 
+
+- **[Kornia](https://github.com/kornia/kornia)** includes TPS utilities such as `get_tps_transform` and `warp_image_tps` (see **[kornia.geometry.transform docs](https://kornia.readthedocs.io/en/latest/geometry.transform.html)**) as part of a larger differentiable computer vision and geometry toolkit, mainly targeting point/image warping operations. *Focuses on image geometry transforms.* 
+
 ## References
 
 [1]: Ziming Liu, Yixuan Wang, Sachin Vaidya, Fabian Ruehle, James Halverson, Marin Soljacic, Thomas Y. Hou, Max Tegmark. "KAN: Kolmogorov–Arnold Networks." *ICLR* (2025). \
