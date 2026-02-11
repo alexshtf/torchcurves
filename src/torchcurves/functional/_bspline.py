@@ -57,356 +57,268 @@ def uniform_augmented_knots(
 
 class _BSplineFunction(torch.autograd.Function):
     ZERO_TOLERANCE = 1e-12
-    ONE_TOLERANCE = (
-        1.0 - ZERO_TOLERANCE
-    )  # Assuming u is normalized to [0,1] for these constants
 
-    """Custom autograd function for B-spline evaluation and differentiation (Vectorized for multiple curves)."""
+    """Custom autograd function for vectorized B-spline evaluation."""
+
+    @staticmethod
+    def _control_point_indices(spans: torch.Tensor, degree: int) -> torch.Tensor:
+        offsets = torch.arange(-degree, 1, device=spans.device).view(1, 1, -1)
+        return spans.unsqueeze(-1) + offsets
+
+    @staticmethod
+    def _curve_indices(
+        num_samples: int, num_curves: int, width: int, device: torch.device
+    ) -> torch.Tensor:
+        return torch.arange(num_curves, device=device).view(1, -1, 1).expand(
+            num_samples, -1, width
+        )
+
+    @staticmethod
+    def _gather_control_points(
+        control_points: torch.Tensor, clamped_cp_indices: torch.Tensor
+    ) -> torch.Tensor:
+        num_samples, num_curves, width = clamped_cp_indices.shape
+        curve_indices = _BSplineFunction._curve_indices(
+            num_samples=num_samples,
+            num_curves=num_curves,
+            width=width,
+            device=control_points.device,
+        )
+        return control_points[curve_indices, clamped_cp_indices, :]
 
     @staticmethod
     def find_spans(
         u: torch.Tensor, knots: torch.Tensor, degree: int, n_control_points: int
     ) -> torch.Tensor:
-        """Find the knot span index for each parameter value (vectorized).
+        """Find the knot span index for each parameter value.
 
         Args:
-            u: Parameter values, shape (N, M) or (N,). N samples, M curves.
-               If u is (N,), it's treated as (N,1).
-               Values are expected to be in the range defined by the knots (e.g., [0,1] or [-1,1]).
-            knots: Knot vector, shape (num_total_knots,). Expected to be a clamped knot vector.
-            degree: B-spline degree (p).
-            n_control_points: Number of control points per curve (c).
+            u: Parameter values of shape (N, M).
+            knots: Knot vector of shape (K,).
+            degree: B-spline degree.
+            n_control_points: Number of control points per curve.
 
         Returns:
-            Span indices, shape (N, M) or (N,). Each span_idx `s` means u falls in [knots[s], knots[s+1]).
+            Span indices of shape (N, M).
 
         """
-        # Note: The original ZERO_TOLERANCE and ONE_TOLERANCE assumed u in [0,1] and knots clamped to [0,1].
-        # If knots are e.g. [-1,1], this specific boundary handling might need adjustment
-        # or u should be pre-normalized to [0,1] if this logic is to be kept strictly.
-        # For now, we assume u is in the range [knots[degree], knots[n_control_points]].
-        # The torch.searchsorted and clamp largely handle this.
-
         spans = torch.searchsorted(knots, u, side="right") - 1
 
-        # Handle boundaries based on the actual knot values for robustness
-        # This assumes knots is sorted and clamped: knots[0]..knots[degree] are same,
-        # and knots[n_control_points]..knots[n_control_points+degree] are same.
-        min_knot_val = knots[degree]
-        max_knot_val = knots[
-            n_control_points
-        ]  # This is the start of the last segment of p+1 knots
-
-        # For u values at or slightly below the minimum parameter value
-        spans[u <= min_knot_val + _BSplineFunction.ZERO_TOLERANCE] = degree
-        # For u values at or slightly above the maximum parameter value
-        spans[u >= max_knot_val - _BSplineFunction.ZERO_TOLERANCE] = (
+        min_knot = knots[degree]
+        max_knot = knots[n_control_points]
+        spans[u <= min_knot + _BSplineFunction.ZERO_TOLERANCE] = degree
+        spans[u >= max_knot - _BSplineFunction.ZERO_TOLERANCE] = (
             n_control_points - 1
         )
-
-        spans = torch.clamp(spans, min=degree, max=n_control_points - 1)
+        spans.clamp_(min=degree, max=n_control_points - 1)
         return spans
 
     @staticmethod
     def cox_de_boor(
         u: torch.Tensor, knots: torch.Tensor, spans: torch.Tensor, degree: int
     ) -> torch.Tensor:
-        """Compute B-spline basis functions using Cox-de Boor recursion.
+        """Compute non-zero B-spline basis values using Cox-de Boor recursion.
 
         Args:
-            u: Parameter values, shape (N, M). N samples, M curves.
-            knots: Knot vector, shape (num_total_knots,).
-            spans: Knot span indices, shape (N, M). `spans[n,m]` is `s`.
-            degree: B-spline degree (p).
+            u: Parameter values of shape (N, M).
+            knots: Knot vector of shape (K,).
+            spans: Knot span indices of shape (N, M).
+            degree: B-spline degree.
 
         Returns:
-            Basis function values N_batch, shape (N, M, degree+1).
-            N_batch[n, m, j] = B_{spans[n,m]-degree+j, degree}(u[n,m]).
+            Basis values of shape (N, M, degree + 1).
 
         """
-        num_samples_n, num_curves_m = u.shape
-        device, dtype = u.device, u.dtype
-
-        # batch_nonzero_basis[n, m, k] will store B_{spans[n,m]-degree+k, degree}(u[n,m])
-        batch_nonzero_basis = torch.zeros(
-            num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype
+        num_samples, num_curves = u.shape
+        basis = torch.zeros(
+            num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype
+        )
+        left = torch.empty(
+            num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype
+        )
+        right = torch.empty(
+            num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype
         )
 
-        left_dist_all_p = torch.empty(
-            num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype
-        )
-        right_dist_all_p = torch.empty(
-            num_samples_n, num_curves_m, degree + 1, device=device, dtype=dtype
-        )
-        zero = torch.tensor(0, dtype=dtype, device=device)
+        basis[..., 0].fill_(1)
+        max_knot_idx = knots.shape[0] - 1
 
-        batch_nonzero_basis[..., 0].fill_(1)
+        for p_iter in range(1, degree + 1):
+            left_idx = (spans + 1 - p_iter).clamp(min=0, max=max_knot_idx)
+            right_idx = (spans + p_iter).clamp(min=0, max=max_knot_idx)
+            left[..., p_iter] = u - knots[left_idx]
+            right[..., p_iter] = knots[right_idx] - u
 
-        for p_iter in range(1, degree + 1):  # p_iter is 'j' in Piegl & Tiller A2.2
-            # knots is 1D. We gather using indices derived from spans (N,M)
-            # Resulting shapes for left_dist_all_p, etc. will be (N,M)
-            idx_knot_left = spans + 1 - p_iter
-            idx_knot_left.clamp_(min=0, max=knots.shape[0] - 1)
-            left_dist_all_p[..., p_iter] = u - knots[idx_knot_left]
-
-            idx_knot_right = spans + p_iter
-            idx_knot_right.clamp_(min=0, max=knots.shape[0] - 1)
-            right_dist_all_p[..., p_iter] = knots[idx_knot_right] - u
-
-            saved_val = zero
+            saved = torch.zeros((), device=u.device, dtype=u.dtype)
             for r_iter in range(p_iter):
-                denominator_batch = (
-                    right_dist_all_p[..., r_iter + 1]
-                    + left_dist_all_p[..., p_iter - r_iter]
-                )
-
-                ratios = batch_nonzero_basis[..., r_iter] / denominator_batch
+                denominator = right[..., r_iter + 1] + left[..., p_iter - r_iter]
+                ratios = basis[..., r_iter] / denominator
                 ratios.nan_to_num_(0, 0, 0)
 
-                batch_nonzero_basis[..., r_iter] = torch.addcmul(
-                    saved_val, right_dist_all_p[..., r_iter + 1], ratios
+                basis[..., r_iter] = torch.addcmul(
+                    saved,
+                    right[..., r_iter + 1],
+                    ratios,
                 )
-                saved_val = left_dist_all_p[..., p_iter - r_iter] * ratios
+                saved = left[..., p_iter - r_iter] * ratios
 
-            batch_nonzero_basis[..., p_iter] = saved_val
-        return batch_nonzero_basis
+            basis[..., p_iter] = saved
+
+        return basis
 
     @staticmethod
     def evaluate_curve(
-        basis: torch.Tensor,  # shape (N, M, degree+1)
-        control_points: torch.Tensor,  # shape (M, C, D) C=n_control_points
-        spans: torch.Tensor,  # shape (N, M)
-        degree: int,
+        basis: torch.Tensor,
+        control_points: torch.Tensor,
+        clamped_cp_indices: torch.Tensor,
     ) -> torch.Tensor:
-        """Evaluate B-spline curves (vectorized for multiple curves).
+        """Evaluate vectorized B-spline curves.
 
         Args:
-            basis: Basis function values. basis[n,m,j] = N_{spans[n,m]-degree+j, degree}(u[n,m]).
-            control_points: Control points for M curves.
-            spans: Knot span indices.
-            degree: B-spline degree.
+            basis: Basis values of shape (N, M, degree + 1).
+            control_points: Control points of shape (M, C, D).
+            clamped_cp_indices: Clamped control-point indices of shape (N, M, degree + 1).
 
         Returns:
             Points on curves, shape (N, M, D).
 
         """
-        num_samples_n, num_curves_m = spans.shape
-        # C = num_control_points_per_curve, D = dim
-        # M_cp, C_cp, D_cp = control_points.shape
-        # Assert M_cp == num_curves_m
-
-        # control_point_indices: indices into C dimension of control_points
-        # Shape: (N, M, degree+1)
-        degrees_range = torch.arange(degree + 1, device=spans.device).view(1, 1, -1)
-        control_point_indices = spans.unsqueeze(-1) - degree + degrees_range
-
-        # Clamp indices to be valid for control_points' C dimension
-        clamped_cp_indices = torch.clamp(
-            control_point_indices, 0, control_points.shape[1] - 1
+        gathered_control_points = _BSplineFunction._gather_control_points(
+            control_points, clamped_cp_indices
         )
-
-        # Gather control points: gathered_control_points[n, m, i, d] = control_points[m, clamped_cp_indices[n,m,i], d]
-        # Need to create m_indices for gathering from control_points' M dimension
-        # m_indices_for_gather shape: (N, M, degree+1)
-        m_indices_for_gather = torch.arange(
-            num_curves_m, device=control_points.device
-        ).view(1, -1, 1)
-        m_indices_for_gather = m_indices_for_gather.expand(
-            num_samples_n, -1, degree + 1
-        )
-
-        gathered_control_points = control_points[
-            m_indices_for_gather,  # Selects the curve from M dimension of control_points
-            clamped_cp_indices,  # Selects the control points from C dimension
-            :,  # Selects all D dimensions
-        ]  # Shape (N, M, degree+1, D)
-
-        # Compute points: points[n,m,d] = sum_i basis[n,m,i] * gathered_control_points[n,m,i,d]
-        # basis.unsqueeze(-1) gives (N, M, degree+1, 1)
-        return (basis.unsqueeze(-1) * gathered_control_points).sum(
-            dim=2
-        )  # Sum over degree+1 dim
+        return (basis.unsqueeze(-1) * gathered_control_points).sum(dim=2)
 
     @staticmethod
     def basis_derivative_coefficients(
         knots: torch.Tensor, spans: torch.Tensor, degree: int
     ) -> Tuple[torch.Tensor, torch.Tensor]:
-        """Compute coefficients for basis function derivatives (vectorized for multiple curves).
+        """Compute coefficients used in basis-derivative recursion.
 
         Args:
             knots: Knot vector.
-            spans: Knot span indices, shape (N, M).
-            degree: B-spline degree (p).
+            spans: Knot span indices of shape (N, M).
+            degree: B-spline degree.
 
         Returns:
-            alpha_coeffs_batch, beta_coeffs_batch: shape (N, M, degree+1).
+            A tuple `(alpha, beta)` each of shape (N, M, degree + 1).
 
         """
-        num_samples_n, num_curves_m = spans.shape
-        device, _ = spans.device, knots.dtype  # Use knot's dtype for coeffs
-
-        degrees_range = torch.arange(-degree, 1, device=device).view(1, 1, -1)
-        knots_idx = spans.unsqueeze(-1) + degrees_range  # (N, M, degree+1)
+        offsets = torch.arange(-degree, 1, device=spans.device).view(1, 1, -1)
+        knot_indices = spans.unsqueeze(-1) + offsets
         max_knot_idx = knots.shape[0] - 1
 
-        # Gather knot values - knots[knots_idx] will broadcast correctly
-        knots_k = knots[knots_idx]
-        knots_k_plus_deg = knots[(knots_idx + degree).clamp(max=max_knot_idx)]
-        knots_k_plus_1 = knots[(knots_idx + 1).clamp(max=max_knot_idx)]
-        knots_k_plus_deg_plus_1 = knots[
-            (knots_idx + (degree + 1)).clamp(max=max_knot_idx)
+        knots_k = knots[knot_indices]
+        knots_k_plus_degree = knots[(knot_indices + degree).clamp(max=max_knot_idx)]
+        knots_k_plus_one = knots[(knot_indices + 1).clamp(max=max_knot_idx)]
+        knots_k_plus_degree_plus_one = knots[
+            (knot_indices + degree + 1).clamp(max=max_knot_idx)
         ]
 
-        alpha_coeffs_batch = degree / (knots_k_plus_deg - knots_k)
-        alpha_coeffs_batch.nan_to_num_(0, 0, 0)
+        alpha = degree / (knots_k_plus_degree - knots_k)
+        alpha.nan_to_num_(0, 0, 0)
 
-        beta_coeffs_batch = degree / (knots_k_plus_deg_plus_1 - knots_k_plus_1)
-        beta_coeffs_batch.nan_to_num_(0, 0, 0)
+        beta = degree / (knots_k_plus_degree_plus_one - knots_k_plus_one)
+        beta.nan_to_num_(0, 0, 0)
 
-        return alpha_coeffs_batch, beta_coeffs_batch
+        return alpha, beta
 
     @staticmethod
     def compute_basis_derivatives(
         u: torch.Tensor, knots: torch.Tensor, spans: torch.Tensor, degree: int
     ) -> torch.Tensor:
-        """Compute derivatives of B-spline basis functions (vectorized for multiple curves).
+        """Compute derivatives of non-zero B-spline basis values.
 
-        Output basis_deriv[n,m,i] = B'_{spans[n,m]-degree+i, degree}(u[n,m]).
-        Shape: (N, M, degree+1)
+        Returns:
+            A tensor of shape (N, M, degree + 1).
+
         """
         if degree == 0:
             return torch.zeros(*u.shape, 1, device=u.device, dtype=u.dtype)
 
-        # lower_deg_basis shape: (N, M, degree)
         lower_deg_basis = _BSplineFunction.cox_de_boor(u, knots, spans, degree - 1)
-
-        # alpha, beta have shape (N, M, degree+1)
         alpha, beta = _BSplineFunction.basis_derivative_coefficients(
             knots, spans, degree
         )
-
-        # Pad lower_deg_basis's last dimension to (degree+1)
-        # Pad (0,1) means add 1 zero to the right: [N0,...,N(deg-1), 0]
         lower_pad_right = F.pad(lower_deg_basis, (0, 1))
-        # Pad (1,0) means add 1 zero to the left: [0, N0,...,N(deg-1)]
         lower_pad_left = F.pad(lower_deg_basis, (1, 0))
-
-        # compute derivative without allocating redundant memory.
         return torch.addcmul(alpha * lower_pad_left, beta, lower_pad_right, value=-1)
+
+    @staticmethod
+    def _accumulate_control_point_grads(
+        grad_output: torch.Tensor,
+        basis: torch.Tensor,
+        clamped_cp_indices: torch.Tensor,
+        control_points: torch.Tensor,
+    ) -> torch.Tensor:
+        num_curves = grad_output.shape[1]
+        grad_control_points = torch.zeros_like(control_points)
+
+        updates = grad_output.unsqueeze(2) * basis.unsqueeze(3)
+        updates_flat = updates.permute(1, 0, 2, 3).reshape(
+            num_curves, -1, grad_output.shape[-1]
+        )
+        indices_flat = clamped_cp_indices.permute(1, 0, 2).reshape(num_curves, -1)
+        indices_expanded = indices_flat.unsqueeze(-1).expand_as(updates_flat)
+        grad_control_points.scatter_add_(1, indices_expanded, updates_flat)
+        return grad_control_points
 
     @staticmethod
     def forward(
         ctx,
-        u: torch.Tensor,  # shape (N, M)
-        control_points: torch.Tensor,  # shape (M, C, D)
-        knots: torch.Tensor,  # shape (num_total_knots,)
+        u: torch.Tensor,
+        control_points: torch.Tensor,
+        knots: torch.Tensor,
         degree: int,
     ) -> torch.Tensor:
-        # M_cp = control_points.shape[0] # Number of curves from control_points
-        # N_u, M_u = u.shape             # N samples, M curves from u
-        # Assert M_cp == M_u
-
-        n_control_points_per_curve = control_points.shape[1]  # C
-
         spans = _BSplineFunction.find_spans(
-            u, knots, degree, n_control_points_per_curve
-        )  # (N,M)
-        basis_funcs = _BSplineFunction.cox_de_boor(
-            u, knots, spans, degree
-        )  # (N,M,degree+1)
+            u, knots, degree, control_points.shape[1]
+        )
+        basis = _BSplineFunction.cox_de_boor(u, knots, spans, degree)
+        clamped_cp_indices = _BSplineFunction._control_point_indices(spans, degree)
+        clamped_cp_indices.clamp_(0, control_points.shape[1] - 1)
         points = _BSplineFunction.evaluate_curve(
-            basis_funcs, control_points, spans, degree
-        )  # (N,M,D)
+            basis=basis,
+            control_points=control_points,
+            clamped_cp_indices=clamped_cp_indices,
+        )
 
-        ctx.save_for_backward(u, control_points, knots, spans, basis_funcs)
+        ctx.save_for_backward(u, control_points, knots, spans, basis)
+        ctx.clamped_cp_indices = clamped_cp_indices
         ctx.degree = degree
-        ctx.n_control_points_per_curve = n_control_points_per_curve  # C
-
-        # For re-computing control_point_indices in backward
-        degrees_range = torch.arange(-degree, 1, device=spans.device).view(1, 1, -1)
-        ctx.control_point_indices = (
-            spans.unsqueeze(-1) + degrees_range
-        )  # (N,M,degree+1)
-
         return points
 
     @staticmethod
-    def backward(ctx, grad_output: torch.Tensor) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None]:  # type: ignore
-        # grad_output shape: (N, M, D)
-        u, control_points, knots, spans, basis_funcs = ctx.saved_tensors
-        # u: (N,M), control_points: (M,C,D), knots: (K,), spans: (N,M), basis_funcs: (N,M,deg+1)
-
+    def backward(  # type: ignore
+        ctx, grad_output: torch.Tensor
+    ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None]:
+        u, control_points, knots, spans, basis = ctx.saved_tensors
+        clamped_cp_indices = ctx.clamped_cp_indices
         degree = ctx.degree
-        n_control_points_per_curve = ctx.n_control_points_per_curve  # C
-        control_point_indices = ctx.control_point_indices  # (N,M,deg+1)
-
-        num_samples_n, num_curves_m = u.shape
-
-        # Compute only the gradients that are needed
         need_grad_u = ctx.needs_input_grad[0]
         need_grad_cp = ctx.needs_input_grad[1]
 
         grad_u = None
         grad_control_points = None
 
-        clamped_cp_indices = torch.clamp(
-            control_point_indices, 0, n_control_points_per_curve - 1
-        )  # (N,M,deg+1)
-
         if need_grad_u:
-            # basis_deriv shape: (N, M, degree+1)
             basis_deriv = _BSplineFunction.compute_basis_derivatives(
                 u, knots, spans, degree
             )
-
-            # m_indices_for_gather shape: (N, M, degree+1)
-            m_indices_for_gather = torch.arange(num_curves_m, device=u.device).view(
-                1, -1, 1
+            gathered_control_points = _BSplineFunction._gather_control_points(
+                control_points, clamped_cp_indices
             )
-            m_indices_for_gather = m_indices_for_gather.expand(
-                num_samples_n, -1, degree + 1
-            )
-
-            # gathered_cps shape: (N, M, degree+1, D)
-            gathered_cps = control_points[m_indices_for_gather, clamped_cp_indices, :]
-
-            # d_points_du[n,m,d] = sum_i basis_deriv[n,m,i] * gathered_cps[n,m,i,d]
             d_points_du = torch.einsum(
-                "nmi,nmid->nmd", basis_deriv, gathered_cps
-            )  # Shape (N, M, D)
-
-            # grad_u[n,m] = sum_d grad_output[n,m,d] * d_points_du[n,m,d]
-            grad_u = (grad_output * d_points_du).sum(dim=-1)  # Shape (N, M)
+                "nmi,nmid->nmd", basis_deriv, gathered_control_points
+            )
+            grad_u = (grad_output * d_points_du).sum(dim=-1)
 
         if need_grad_cp:
-            # Gradient with respect to control_points
-            grad_control_points = torch.zeros_like(control_points)
-
-            # update_values[n,m,i,d] = grad_output[n,m,d] * basis_funcs[n,m,i]
-            update_values = grad_output.unsqueeze(2) * basis_funcs.unsqueeze(
-                3
-            )  # (N,M,deg+1,D)
-
-            # Permute for scatter_add_: target grad_control_points[m_idx, c_idx, d_idx]
-            # update_values: (N, M, deg+1, D) -> (M, N, deg+1, D)
-            update_values_perm = update_values.permute(1, 0, 2, 3)
-            # clamped_cp_indices: (N, M, deg+1) -> (M, N, deg+1)
-            clamped_cp_indices_perm = clamped_cp_indices.permute(1, 0, 2)
-
-            # Flatten N and deg+1 dimensions
-            # uv_flat: (M, N*(deg+1), D)
-            uv_flat = update_values_perm.reshape(
-                num_curves_m, -1, grad_output.shape[-1]
+            grad_control_points = _BSplineFunction._accumulate_control_point_grads(
+                grad_output=grad_output,
+                basis=basis,
+                clamped_cp_indices=clamped_cp_indices,
+                control_points=control_points,
             )
-            # idx_flat: (M, N*(deg+1))
-            idx_flat = clamped_cp_indices_perm.reshape(num_curves_m, -1)
-
-            # Expand idx_flat to match uv_flat for scatter_add_
-            # idx_expanded_for_scatter: (M, N*(deg+1), D)
-            idx_expanded_for_scatter = idx_flat.unsqueeze(-1).expand_as(uv_flat)
-
-            # Scatter add along dimension C (index 1)
-            grad_control_points.scatter_add_(1, idx_expanded_for_scatter, uv_flat)
 
         return grad_u, grad_control_points, None, None
 
