@@ -75,16 +75,16 @@ class _BSplineFunction(torch.autograd.Function):
 
     @staticmethod
     def _gather_control_points(
-        control_points: torch.Tensor, clamped_cp_indices: torch.Tensor
+        control_points: torch.Tensor, cp_indices: torch.Tensor
     ) -> torch.Tensor:
-        num_samples, num_curves, width = clamped_cp_indices.shape
+        num_samples, num_curves, width = cp_indices.shape
         curve_indices = _BSplineFunction._curve_indices(
             num_samples=num_samples,
             num_curves=num_curves,
             width=width,
             device=control_points.device,
         )
-        return control_points[curve_indices, clamped_cp_indices, :]
+        return control_points[curve_indices, cp_indices, :]
 
     @staticmethod
     def find_spans(
@@ -141,15 +141,15 @@ class _BSplineFunction(torch.autograd.Function):
         )
 
         basis[..., 0].fill_(1)
-        max_knot_idx = knots.shape[0] - 1
+        zero = torch.zeros((), device=u.device, dtype=u.dtype)
 
         for p_iter in range(1, degree + 1):
-            left_idx = (spans + 1 - p_iter).clamp(min=0, max=max_knot_idx)
-            right_idx = (spans + p_iter).clamp(min=0, max=max_knot_idx)
+            left_idx = spans + 1 - p_iter
+            right_idx = spans + p_iter
             left[..., p_iter] = u - knots[left_idx]
             right[..., p_iter] = knots[right_idx] - u
 
-            saved = torch.zeros((), device=u.device, dtype=u.dtype)
+            saved = zero
             for r_iter in range(p_iter):
                 denominator = right[..., r_iter + 1] + left[..., p_iter - r_iter]
                 ratios = basis[..., r_iter] / denominator
@@ -170,21 +170,21 @@ class _BSplineFunction(torch.autograd.Function):
     def evaluate_curve(
         basis: torch.Tensor,
         control_points: torch.Tensor,
-        clamped_cp_indices: torch.Tensor,
+        cp_indices: torch.Tensor,
     ) -> torch.Tensor:
         """Evaluate vectorized B-spline curves.
 
         Args:
             basis: Basis values of shape (N, M, degree + 1).
             control_points: Control points of shape (M, C, D).
-            clamped_cp_indices: Clamped control-point indices of shape (N, M, degree + 1).
+            cp_indices: Control-point indices of shape (N, M, degree + 1).
 
         Returns:
             Points on curves, shape (N, M, D).
 
         """
         gathered_control_points = _BSplineFunction._gather_control_points(
-            control_points, clamped_cp_indices
+            control_points, cp_indices
         )
         return (basis.unsqueeze(-1) * gathered_control_points).sum(dim=2)
 
@@ -205,14 +205,11 @@ class _BSplineFunction(torch.autograd.Function):
         """
         offsets = torch.arange(-degree, 1, device=spans.device).view(1, 1, -1)
         knot_indices = spans.unsqueeze(-1) + offsets
-        max_knot_idx = knots.shape[0] - 1
 
         knots_k = knots[knot_indices]
-        knots_k_plus_degree = knots[(knot_indices + degree).clamp(max=max_knot_idx)]
-        knots_k_plus_one = knots[(knot_indices + 1).clamp(max=max_knot_idx)]
-        knots_k_plus_degree_plus_one = knots[
-            (knot_indices + degree + 1).clamp(max=max_knot_idx)
-        ]
+        knots_k_plus_degree = knots[knot_indices + degree]
+        knots_k_plus_one = knots[knot_indices + 1]
+        knots_k_plus_degree_plus_one = knots[knot_indices + degree + 1]
 
         alpha = degree / (knots_k_plus_degree - knots_k)
         alpha.nan_to_num_(0, 0, 0)
@@ -247,17 +244,21 @@ class _BSplineFunction(torch.autograd.Function):
     def _accumulate_control_point_grads(
         grad_output: torch.Tensor,
         basis: torch.Tensor,
-        clamped_cp_indices: torch.Tensor,
-        control_points: torch.Tensor,
+        cp_indices: torch.Tensor,
+        control_points_shape: tuple[int, int, int],
     ) -> torch.Tensor:
         num_curves = grad_output.shape[1]
-        grad_control_points = torch.zeros_like(control_points)
+        grad_control_points = torch.zeros(
+            control_points_shape,
+            device=grad_output.device,
+            dtype=grad_output.dtype,
+        )
 
         updates = grad_output.unsqueeze(2) * basis.unsqueeze(3)
         updates_flat = updates.permute(1, 0, 2, 3).reshape(
             num_curves, -1, grad_output.shape[-1]
         )
-        indices_flat = clamped_cp_indices.permute(1, 0, 2).reshape(num_curves, -1)
+        indices_flat = cp_indices.permute(1, 0, 2).reshape(num_curves, -1)
         indices_expanded = indices_flat.unsqueeze(-1).expand_as(updates_flat)
         grad_control_points.scatter_add_(1, indices_expanded, updates_flat)
         return grad_control_points
@@ -270,20 +271,30 @@ class _BSplineFunction(torch.autograd.Function):
         knots: torch.Tensor,
         degree: int,
     ) -> torch.Tensor:
+        need_grad_u = ctx.needs_input_grad[0]
+        need_grad_cp = ctx.needs_input_grad[1]
+
         spans = _BSplineFunction.find_spans(
             u, knots, degree, control_points.shape[1]
         )
         basis = _BSplineFunction.cox_de_boor(u, knots, spans, degree)
-        clamped_cp_indices = _BSplineFunction._control_point_indices(spans, degree)
-        clamped_cp_indices.clamp_(0, control_points.shape[1] - 1)
+        cp_indices = _BSplineFunction._control_point_indices(spans, degree)
         points = _BSplineFunction.evaluate_curve(
             basis=basis,
             control_points=control_points,
-            clamped_cp_indices=clamped_cp_indices,
+            cp_indices=cp_indices,
         )
 
-        ctx.save_for_backward(u, control_points, knots, spans, basis)
-        ctx.clamped_cp_indices = clamped_cp_indices
+        saved = [cp_indices]
+        if need_grad_u:
+            saved.extend([spans, u, control_points, knots])
+        if need_grad_cp:
+            saved.append(basis)
+        ctx.save_for_backward(*saved)
+
+        ctx.need_grad_u = need_grad_u
+        ctx.need_grad_cp = need_grad_cp
+        ctx.control_points_shape = tuple(control_points.shape)
         ctx.degree = degree
         return points
 
@@ -291,33 +302,39 @@ class _BSplineFunction(torch.autograd.Function):
     def backward(  # type: ignore
         ctx, grad_output: torch.Tensor
     ) -> Tuple[Optional[torch.Tensor], Optional[torch.Tensor], None, None]:
-        u, control_points, knots, spans, basis = ctx.saved_tensors
-        clamped_cp_indices = ctx.clamped_cp_indices
+        need_grad_u = ctx.need_grad_u
+        need_grad_cp = ctx.need_grad_cp
+
+        saved_iter = iter(ctx.saved_tensors)
+        cp_indices = next(saved_iter)
+
         degree = ctx.degree
-        need_grad_u = ctx.needs_input_grad[0]
-        need_grad_cp = ctx.needs_input_grad[1]
 
         grad_u = None
-        grad_control_points = None
-
         if need_grad_u:
+            spans = next(saved_iter)
+            u = next(saved_iter)
+            control_points = next(saved_iter)
+            knots = next(saved_iter)
             basis_deriv = _BSplineFunction.compute_basis_derivatives(
                 u, knots, spans, degree
             )
             gathered_control_points = _BSplineFunction._gather_control_points(
-                control_points, clamped_cp_indices
+                control_points, cp_indices
             )
             d_points_du = torch.einsum(
                 "nmi,nmid->nmd", basis_deriv, gathered_control_points
             )
             grad_u = (grad_output * d_points_du).sum(dim=-1)
 
+        grad_control_points = None
         if need_grad_cp:
+            basis = next(saved_iter)
             grad_control_points = _BSplineFunction._accumulate_control_point_grads(
                 grad_output=grad_output,
                 basis=basis,
-                clamped_cp_indices=clamped_cp_indices,
-                control_points=control_points,
+                cp_indices=cp_indices,
+                control_points_shape=ctx.control_points_shape,
             )
 
         return grad_u, grad_control_points, None, None
