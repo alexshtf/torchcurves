@@ -9,14 +9,14 @@
 
 <div align="center">
 
-[![torchcurves-backend](https://github.com/alexshtf/torchcurves/actions/workflows/tests.yml/badge.svg)](https://github.com/alexshtf/torchcurves/actions/workflows/test.yml)
+[![torchcurves-backend](https://github.com/alexshtf/torchcurves/actions/workflows/tests.yml/badge.svg)](https://github.com/alexshtf/torchcurves/actions/workflows/tests.yml)
 [![PyPI downloads](https://img.shields.io/pypi/dm/torchcurves)](https://pypi.org/project/torchcurves/)
 [![PyPI](https://img.shields.io/pypi/v/torchcurves)](https://pypi.org/project/torchcurves/)
 ![Python version](https://img.shields.io/badge/python-3.9+-important)
 
 </div>
 
-A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients, such as a B-Spline curve with learnable control points, for KANs, continuous embeddings, and shape constraints.
+A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients, such as a B-spline curve with learnable control points, for KANs, continuous embeddings, and shape constraints.
 
 <div align="center">
     <p><b>Use cases</b></p>
@@ -27,10 +27,10 @@ A PyTorch module for _vectorized_ and _differentiable_ parametric curves with le
     </picture>
 </div>
 
-Turns out all the above use cases have one thing in common - they can all be expressed using learnable parametric curves, and this the tool this library provides.
+Turns out all the above use cases have one thing in common: they can all be expressed using learnable parametric curves, and that is exactly what this library provides.
 
 ## Learn
-A simple "hello world" example - evaluate three two-dimensional b-spline curves at four points:
+A simple "hello world" example: evaluate three two-dimensional B-spline curves at four points:
 ```python
 import torch
 import torchcurves as tc
@@ -67,7 +67,7 @@ uv add torchcurves
 
 ## Use cases
 
-There are examples in the `doc/examples` directory showing how to build models using
+There are examples in the `doc/source/examples` directory showing how to build models using
 this library. Here we show some simple code snippets to appreciate the library.
 
 ## Use case 1 - continuous embeddings
@@ -83,7 +83,7 @@ class Net(nn.Module):
         super().__init__()
         self.cat_emb = nn.Embedding(num_categorical, dim)
         self.num_emb = tc.BSplineCurve(num_numerical, dim, knots_config=num_knots)
-        self.embedding_based_model = MySuperDuperModel() # <-- put your encoder model here
+        self.embedding_based_model = MySuperDuperModel()  # placeholder for your encoder model
 
     def forward(self, x_categorical, x_numerical):
         embeddings = torch.cat([
@@ -93,13 +93,14 @@ class Net(nn.Module):
         return self.embedding_based_model(embeddings)
 ```
 
+`MySuperDuperModel` is a placeholder for your downstream architecture.
+
 ## Use case 2 - monotone functions
 Working on online advertising, and want to model the probability of winning an ad auction given the bid? We know higher bids
-must result in a higher win probability - we need a monotone function. Turns out B-Splines are monotone if their coefficient vectors are monotone. Want an increasing function? Just make sure
-the increasing - so let's use it.
+must result in a higher win probability, so we need a monotone function. Turns out B-splines are monotone if their coefficient vectors are monotone. Want an increasing function? Ensure the spline coefficients are increasing, and the resulting spline will be monotone increasing.
 
 Below is an example with an auction encoder that encodes the auction into a vector, we then transform it to an increasing vector,
-and use it as the coefficient vector for a B-Spline curve.
+and use it as the coefficient vector for a B-spline curve.
 ```python
 import torch
 from torch import nn
@@ -108,16 +109,20 @@ import torchcurves.functional as tcf
 
 class AuctionWinModel(nn.Module):
     def __init__(self, num_auction_features, num_bid_coefficients):
-        self.auction_encoder = make_auction_encoder(  # example - an MLP, a transformer, etc.
+        super().__init__()
+        self.auction_encoder = make_auction_encoder(  # placeholder: an MLP, a transformer, etc.
             input_features=num_auction_features,
             output_features=num_bid_coefficients,
         )
-        self.spline_knots = nn.Buffer(tcf.uniform_augmented_knots(
-            n_control_points=num_bid_coefficients,
-            degree=3,
-            k_min=0,
-            k_max=1
-        ))
+        self.register_buffer(
+            "spline_knots",
+            tcf.uniform_augmented_knots(
+                n_control_points=num_bid_coefficients,
+                degree=3,
+                k_min=0,
+                k_max=1,
+            ),
+        )
 
     def forward(self, auction_features, bids):
         # map auction features to increasing spline coefficients
@@ -143,6 +148,8 @@ class AuctionWinModel(nn.Module):
         return torch.cumsum(concatenated, dim=-1)
 ```
 
+`make_auction_encoder` is a placeholder for your encoder architecture.
+
 Now we can train the model to predict the probability of winning auctions given auction features and bid:
 ```python
 import torch.nn.functional as F
@@ -161,7 +168,7 @@ for auction_features, bids, win_labels in train_loader:
 
 ## Use case 3 - Kolmogorov-Arnold networks
 
-A KAN [1] based on the B-Spline basis, along the lines of the original paper:
+A KAN [1] based on the B-spline basis, along the lines of the original paper:
 
 ```python
 import torchcurves as tc
@@ -184,7 +191,7 @@ kan = nn.Sequential(
 )
 ```
 Yes, we know the original KAN paper used a different curve parametrization,
-B-Spline + arcsinh, but the whole point of this repo is showing that KAN
+B-spline + arcsinh, but the whole point of this repo is showing that KAN
 activations can be parametrized in arbitrary ways.
 
 For example, here is a KAN based on Legendre polynomials of degree 5:
@@ -295,9 +302,9 @@ tc.functional.legendre_curves(x, coeffs, checkpoint_segments=4)
 tc.LegendreCurve(num_curves, curve_dim, degree=degree, checkpoint_segments=4)
 ```
 
-### Example: B-Spline KAN with clamping
+### Example: B-spline KAN with clamping
 
-A KAN based on rationally scaled B-Spline basis with the default scale of $s=1$:
+A KAN based on a clamped B-spline basis with the default scale of $s=1$:
 
 ```python
 import torchcurves as tc
@@ -321,7 +328,7 @@ spline_kan = nn.Sequential(
 )
 ```
 
-### Legendre KAN with rational clamping
+### Legendre KAN with clamping
 
 ```python
 import torchcurves as tc
@@ -436,17 +443,17 @@ If you use this package in your research, please cite:
 Several well-maintained PyTorch libraries use splines in practice. They mostly target *interpolation/resampling* or *geometric warping* rather than providing a generic, drop-in learnable parametric curve layer.
 
 ### ND interpolation and resampling
-- **[torch-interpol](https://github.com/balbasty/torch-interpol)** (also on **[PyPI](https://pypi.org/project/torch-interpol/)**) implements high-order spline interpolation for **ND tensors** (e.g., 2D/3D images), with TorchScript acceleration and explicit forward/backward implementations. It is primarily designed for resampling under a sampling grid / deformation-field workflows, including dimension-specific interpolation orders and boundary handling (`bound`). *Best suited for resampling tensor data on fixed grids.* 
+- **[torch-interpol](https://github.com/balbasty/torch-interpol)** (also on **[PyPI](https://pypi.org/project/torch-interpol/)**) implements high-order spline interpolation for **ND tensors** (e.g., 2D/3D images), with TorchScript acceleration and explicit forward/backward implementations. It is primarily designed for resampling under a sampling grid / deformation-field workflows, including dimension-specific interpolation orders and boundary handling (`bound`). *Best suited for resampling tensor data on fixed grids.*
 
-- **[xitorch – `Interp1D`](https://xitorch.readthedocs.io/en/latest/api/xitorch_interpolate/Interp1D.html)** (repo: **[xitorch/xitorch](https://github.com/xitorch/xitorch)**) provides differentiable **1D interpolation** including cubic splines (`method="cspline"`) for non-uniform sample locations with configurable boundary conditions and extrapolation options. This is an interpolation primitive: you provide `(x, y)` samples and query at `xq`. *Designed as a functional primitive for data interpolation.* 
+- **[xitorch – `Interp1D`](https://xitorch.readthedocs.io/en/latest/api/xitorch_interpolate/Interp1D.html)** (repo: **[xitorch/xitorch](https://github.com/xitorch/xitorch)**) provides differentiable **1D interpolation** including cubic splines (`method="cspline"`) for non-uniform sample locations with configurable boundary conditions and extrapolation options. This is an interpolation primitive: you provide `(x, y)` samples and query at `xq`. *Designed as a functional primitive for data interpolation.*
 
 ### Learnable continuous fields via grids
-- **[torch-cubic-spline-grids](https://github.com/alisterburt/torch-cubic-spline-grids)** (also on **[PyPI](https://pypi.org/project/torch-cubic-spline-grids/)**) provides learnable, continuous parametrisations of **1–4D spaces** using **uniform grids** whose coordinate system spans `[0, 1]` along each dimension. It supports both cubic **B-spline** grids (C2, not interpolating) and cubic **Catmull–Rom** grids (C1, interpolating), which are well suited to learning smooth spatial/temporal fields (e.g., deformation fields). *Targets dense continuous fields rather than curve trajectories.* 
+- **[torch-cubic-spline-grids](https://github.com/alisterburt/torch-cubic-spline-grids)** (also on **[PyPI](https://pypi.org/project/torch-cubic-spline-grids/)**) provides learnable, continuous parametrisations of **1–4D spaces** using **uniform grids** whose coordinate system spans `[0, 1]` along each dimension. It supports both cubic **B-spline** grids (C2, not interpolating) and cubic **Catmull–Rom** grids (C1, interpolating), which are well suited to learning smooth spatial/temporal fields (e.g., deformation fields). *Targets dense continuous fields rather than curve trajectories.*
 
 ### Thin-plate / polyharmonic spline warping
-- **[torch-tps](https://github.com/raphaelreme/torch-tps)** (also on **[PyPI](https://pypi.org/project/torch-tps/)**) implements generalized **polyharmonic spline** interpolation (thin-plate splines in 2D) for learning smooth mappings between Euclidean spaces from control point correspondences, with configurable spline order and regularization. *Specializes in spatial warping and point-set registration.* 
+- **[torch-tps](https://github.com/raphaelreme/torch-tps)** (also on **[PyPI](https://pypi.org/project/torch-tps/)**) implements generalized **polyharmonic spline** interpolation (thin-plate splines in 2D) for learning smooth mappings between Euclidean spaces from control point correspondences, with configurable spline order and regularization. *Specializes in spatial warping and point-set registration.*
 
-- **[Kornia](https://github.com/kornia/kornia)** includes TPS utilities such as `get_tps_transform` and `warp_image_tps` (see **[kornia.geometry.transform docs](https://kornia.readthedocs.io/en/latest/geometry.transform.html)**) as part of a larger differentiable computer vision and geometry toolkit, mainly targeting point/image warping operations. *Focuses on image geometry transforms.* 
+- **[Kornia](https://github.com/kornia/kornia)** includes TPS utilities such as `get_tps_transform` and `warp_image_tps` (see **[kornia.geometry.transform docs](https://kornia.readthedocs.io/en/latest/geometry.transform.html)**) as part of a larger differentiable computer vision and geometry toolkit, mainly targeting point/image warping operations. *Focuses on image geometry transforms.*
 
 ## References
 
