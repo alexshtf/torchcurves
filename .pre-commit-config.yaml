@@ -1,6 +1,6 @@
 repos:
 - repo: https://github.com/pre-commit/pre-commit-hooks
-  rev: v4.5.0
+  rev: v6.0.0
   hooks:
     - id: trailing-whitespace
     - id: end-of-file-fixer
@@ -18,8 +18,9 @@ repos:
     # Run the formatter.
     - id: ruff-format
       types_or: [ python, pyi ]
-- repo: https://github.com/pre-commit/mirrors-pyright
-  rev: v1.1.351
+# .pre-commit-config.yaml
+- repo: https://github.com/RobertCraigie/pyright-python
+  rev: v1.1.408
   hooks:
     - id: pyright
       args: [ src ]
