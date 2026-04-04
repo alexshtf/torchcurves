@@ -9,12 +9,25 @@ readme = "README.md"
 license = "Apache-2.0"
 license-files = ["LICENSE"]
 requires-python = ">=3.9"
-keywords = ["pytorch", "bspline", "curves", "differentiable", "deep-learning", "geometric-deep-learning"]
+keywords = [
+    "pytorch",
+    "b-spline",
+    "bspline",
+    "splines",
+    "parametric-curves",
+    "differentiable",
+    "kan",
+    "kolmogorov-arnold-networks",
+    "legendre-polynomials",
+    "function-approximation",
+    "continuous-embeddings",
+    "scientific-computing",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Intended Audience :: Developers",
     "Intended Audience :: Science/Research",
-    "License :: OSI Approved :: Apache Software License",
+    "Operating System :: OS Independent",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.9",
@@ -22,8 +35,10 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Topic :: Scientific/Engineering",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Mathematics",
+    "Topic :: Software Development :: Libraries :: Python Modules",
 ]
 
 dependencies = [
