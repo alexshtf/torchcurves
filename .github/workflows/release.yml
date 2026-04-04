@@ -9,10 +9,6 @@ on:
         description: Version to release (for example 0.2.2 or v0.2.2)
         required: true
         type: string
-      release_notes:
-        description: Markdown release notes for the GitHub release body
-        required: true
-        type: string
 
 concurrency:
   group: release
@@ -28,6 +24,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       release_name: ${{ steps.meta.outputs.release_name }}
+      release_notes_path: ${{ steps.meta.outputs.release_notes_path }}
       versioned_source_artifact: ${{ steps.meta.outputs.versioned_source_artifact }}
     steps:
       - uses: actions/checkout@v4
@@ -62,6 +59,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "release_name=v$version" >> "$GITHUB_OUTPUT"
+          echo "release_notes_path=docs/releases/$version.md" >> "$GITHUB_OUTPUT"
           echo "versioned_source_artifact=release-versioned-source" >> "$GITHUB_OUTPUT"
 
       - name: Fail if the git tag already exists
@@ -91,6 +89,15 @@ jobs:
               exit 1
               ;;
           esac
+
+      - name: Fail if the checked-in release notes file is missing
+        env:
+          RELEASE_NOTES_PATH: ${{ steps.meta.outputs.release_notes_path }}
+        run: |
+          if [ ! -f "$RELEASE_NOTES_PATH" ]; then
+            echo "Release notes file '$RELEASE_NOTES_PATH' does not exist." >&2
+            exit 1
+          fi
 
   prepare_versioned_source:
     name: Prepare versioned source
@@ -238,13 +245,16 @@ jobs:
         env:
           TAG: ${{ needs.meta.outputs.tag }}
           RELEASE_NAME: ${{ needs.meta.outputs.release_name }}
-          RELEASE_NOTES: ${{ inputs.release_notes }}
+          RELEASE_NOTES_PATH: ${{ needs.meta.outputs.release_notes_path }}
         with:
           script: |
+            const fs = require("fs");
+            const releaseNotes = fs.readFileSync(process.env.RELEASE_NOTES_PATH, "utf8");
+
             await github.rest.repos.createRelease({
               owner: context.repo.owner,
               repo: context.repo.repo,
               tag_name: process.env.TAG,
               name: process.env.RELEASE_NAME,
-              body: process.env.RELEASE_NOTES,
+              body: releaseNotes,
             });
