@@ -1,0 +1,57 @@
+name: Prepare Versioned Source
+
+on:
+  workflow_call:
+    inputs:
+      version:
+        required: true
+        type: string
+      ref:
+        required: true
+        type: string
+      artifact_name:
+        required: true
+        type: string
+
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ inputs.ref }}
+
+      - name: Set release version in source
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import os
+          import re
+          from pathlib import Path
+
+          path = Path("src/torchcurves/__init__.py")
+          text = path.read_text()
+          version = os.environ["VERSION"]
+
+          updated, count = re.subn(
+              r'^__version__ = "[^"]+"$',
+              f'__version__ = "{version}"',
+              text,
+              count=1,
+              flags=re.MULTILINE,
+          )
+          if count != 1:
+              raise SystemExit("Could not update __version__ in src/torchcurves/__init__.py")
+
+          path.write_text(updated)
+          PY
+
+      - name: Upload versioned source artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ inputs.artifact_name }}
+          path: src/torchcurves/__init__.py

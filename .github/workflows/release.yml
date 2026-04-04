@@ -19,8 +19,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build:
-    name: Validate and build release artifacts
+  meta:
+    name: Validate release request
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -28,6 +28,7 @@ jobs:
       version: ${{ steps.meta.outputs.version }}
       tag: ${{ steps.meta.outputs.tag }}
       release_name: ${{ steps.meta.outputs.release_name }}
+      versioned_source_artifact: ${{ steps.meta.outputs.versioned_source_artifact }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -61,6 +62,7 @@ jobs:
           echo "version=$version" >> "$GITHUB_OUTPUT"
           echo "tag=v$version" >> "$GITHUB_OUTPUT"
           echo "release_name=v$version" >> "$GITHUB_OUTPUT"
+          echo "versioned_source_artifact=release-versioned-source" >> "$GITHUB_OUTPUT"
 
       - name: Fail if the git tag already exists
         env:
@@ -90,6 +92,39 @@ jobs:
               ;;
           esac
 
+  prepare_versioned_source:
+    name: Prepare versioned source
+    needs: meta
+    uses: ./.github/workflows/prepare-versioned-source.yml
+    with:
+      version: ${{ needs.meta.outputs.version }}
+      ref: ${{ github.sha }}
+      artifact_name: ${{ needs.meta.outputs.versioned_source_artifact }}
+
+  build:
+    name: Validate and build release artifacts
+    needs:
+      - meta
+      - prepare_versioned_source
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Download versioned source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.versioned_source_artifact }}
+          path: versioned-source/
+
+      - name: Install versioned source file
+        run: |
+          cp versioned-source/src/torchcurves/__init__.py src/torchcurves/__init__.py
+
       - name: Install uv
         uses: astral-sh/setup-uv@v3
 
@@ -100,32 +135,6 @@ jobs:
         run: |
           uv venv
           uv sync --all-groups
-
-      - name: Set release version in source
-        env:
-          VERSION: ${{ steps.meta.outputs.version }}
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          path = Path("src/torchcurves/__init__.py")
-          text = path.read_text()
-          version = os.environ["VERSION"]
-
-          updated, count = re.subn(
-              r'^__version__ = "[^"]+"$',
-              f'__version__ = "{version}"',
-              text,
-              count=1,
-              flags=re.MULTILINE,
-          )
-          if count != 1:
-              raise SystemExit("Could not update __version__ in src/torchcurves/__init__.py")
-
-          path.write_text(updated)
-          PY
 
       - name: Lint with ruff
         run: |
@@ -171,7 +180,8 @@ jobs:
   finalize:
     name: Commit version, tag, and create GitHub release
     needs:
-      - build
+      - meta
+      - prepare_versioned_source
       - publish
     runs-on: ubuntu-latest
     permissions:
@@ -182,47 +192,24 @@ jobs:
           fetch-depth: 0
           ref: ${{ github.sha }}
 
-      - name: Ensure the workflow is run from master
+      - name: Download versioned source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.versioned_source_artifact }}
+          path: versioned-source/
+
+      - name: Install versioned source file
         run: |
-          if [ "${{ github.ref_name }}" != "master" ]; then
-            echo "Run this workflow from master, not '${{ github.ref_name }}'." >&2
-            exit 1
-          fi
+          cp versioned-source/src/torchcurves/__init__.py src/torchcurves/__init__.py
 
       - name: Configure git user
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Set release version in source
-        env:
-          VERSION: ${{ needs.build.outputs.version }}
-        run: |
-          python - <<'PY'
-          import os
-          import re
-          from pathlib import Path
-
-          path = Path("src/torchcurves/__init__.py")
-          text = path.read_text()
-          version = os.environ["VERSION"]
-
-          updated, count = re.subn(
-              r'^__version__ = "[^"]+"$',
-              f'__version__ = "{version}"',
-              text,
-              count=1,
-              flags=re.MULTILINE,
-          )
-          if count != 1:
-              raise SystemExit("Could not update __version__ in src/torchcurves/__init__.py")
-
-          path.write_text(updated)
-          PY
-
       - name: Commit the version bump
         env:
-          VERSION: ${{ needs.build.outputs.version }}
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           git add src/torchcurves/__init__.py
 
@@ -235,22 +222,22 @@ jobs:
 
       - name: Create annotated git tag
         env:
-          TAG: ${{ needs.build.outputs.tag }}
-          VERSION: ${{ needs.build.outputs.version }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
         run: |
           git tag -a "$TAG" -m "Release ${VERSION}"
 
       - name: Push release commit and tag
         env:
-          TAG: ${{ needs.build.outputs.tag }}
+          TAG: ${{ needs.meta.outputs.tag }}
         run: |
           git push --atomic origin HEAD:master "$TAG"
 
       - name: Create GitHub release
         uses: actions/github-script@v7
         env:
-          TAG: ${{ needs.build.outputs.tag }}
-          RELEASE_NAME: ${{ needs.build.outputs.release_name }}
+          TAG: ${{ needs.meta.outputs.tag }}
+          RELEASE_NAME: ${{ needs.meta.outputs.release_name }}
           RELEASE_NOTES: ${{ inputs.release_notes }}
         with:
           script: |
