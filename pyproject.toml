@@ -75,13 +75,6 @@ packages = ["src/torchcurves"]
 [tool.hatch.version]
 path = "src/torchcurves/__init__.py"
 
-[tool.pytest.ini_options]
-testpaths = ["tests"]
-python_files = "test_*.py"
-python_classes = "Test*"
-python_functions = "test_*"
-addopts = "-v --cov=torch_bspline --cov-report=term-missing"
-
 [tool.ruff]
 line-length = 120
 
