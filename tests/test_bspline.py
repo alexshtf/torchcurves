@@ -3,11 +3,15 @@ import re
 import pytest
 import torch
 from scipy.interpolate import BSpline as SciPyBSpline
+from torch.autograd import gradcheck
 
 from torchcurves import BSplineCurve
 from torchcurves.functional import bspline_curves, uniform_augmented_knots
 
 DTYPE = torch.float64
+GRADCHECK_EPS = 1e-6
+GRADCHECK_ATOL = 1e-4
+GRADCHECK_RTOL = 1e-3
 
 
 def _seeded_control_points(num_curves: int, n_control_points: int, dim: int) -> torch.Tensor:
@@ -45,6 +49,30 @@ def _scipy_single_curve_single_sample(
         for dim_index in range(cp_np.shape[1])
     ]
     return torch.tensor(values, dtype=control_points_single.dtype).view(1, 1, -1)
+
+
+def _run_bspline_gradcheck(
+    u: torch.Tensor,
+    *,
+    degree: int,
+    n_control_points: int,
+    dim: int,
+) -> None:
+    num_curves = u.shape[1]
+    control_points = _seeded_control_points(num_curves, n_control_points, dim).requires_grad_()
+    knots = uniform_augmented_knots(n_control_points, degree, dtype=DTYPE)
+
+    # Use float64 CPU tensors with explicit tolerances to keep finite-difference
+    # checks stable across representative spline degrees and boundary-adjacent inputs.
+    passed = gradcheck(
+        lambda u_arg, control_points_arg: bspline_curves(u_arg, control_points_arg, knots, degree),
+        (u.requires_grad_(), control_points),
+        eps=GRADCHECK_EPS,
+        atol=GRADCHECK_ATOL,
+        rtol=GRADCHECK_RTOL,
+    )
+
+    assert passed
 
 
 @pytest.mark.parametrize(
@@ -138,6 +166,68 @@ def test_multiple_curves_multiple_samples_matches_nested_single_single_concatena
 
     expected = torch.cat(rows, dim=0)  # (batch, curves, dim)
     torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("degree", "n_control_points", "dim", "u"),
+    [
+        (
+            1,
+            4,
+            1,
+            torch.tensor([[-0.75], [0.15]], dtype=DTYPE),
+        ),
+        (
+            2,
+            5,
+            2,
+            torch.tensor(
+                [
+                    [-0.6, 0.1],
+                    [0.35, 0.8],
+                ],
+                dtype=DTYPE,
+            ),
+        ),
+    ],
+    ids=["degree-1-single-curve", "degree-2-two-curves"],
+)
+def test_bspline_gradcheck_interior_inputs(
+    degree: int,
+    n_control_points: int,
+    dim: int,
+    u: torch.Tensor,
+) -> None:
+    _run_bspline_gradcheck(
+        u,
+        degree=degree,
+        n_control_points=n_control_points,
+        dim=dim,
+    )
+
+
+def test_bspline_gradcheck_near_knot_boundaries() -> None:
+    degree = 3
+    n_control_points = 6
+    dim = 1
+    knots = uniform_augmented_knots(n_control_points, degree, dtype=DTYPE)
+    left = knots[degree].item()
+    right = knots[n_control_points].item()
+    offset = 1e-4
+    u = torch.tensor(
+        [
+            [left + offset, right - offset],
+            [left + 2 * offset, 0.0],
+        ],
+        dtype=DTYPE,
+    )
+
+    _run_bspline_gradcheck(
+        u,
+        degree=degree,
+        n_control_points=n_control_points,
+        dim=dim,
+    )
 
 
 def test_bspline_module_accepts_batched_curve_inputs() -> None:
