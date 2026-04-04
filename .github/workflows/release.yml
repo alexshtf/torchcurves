@@ -1,0 +1,250 @@
+name: Release
+
+run-name: Release ${{ inputs.version }}
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Version to release (for example 0.2.2 or v0.2.2)
+        required: true
+        type: string
+      release_notes:
+        description: Markdown release notes for the GitHub release body
+        required: true
+        type: string
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  meta:
+    name: Validate release request
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+      release_name: ${{ steps.meta.outputs.release_name }}
+      versioned_source_artifact: ${{ steps.meta.outputs.versioned_source_artifact }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Ensure the workflow is run from master
+        run: |
+          if [ "${{ github.ref_name }}" != "master" ]; then
+            echo "Run this workflow from master, not '${{ github.ref_name }}'." >&2
+            exit 1
+          fi
+
+      - name: Normalize release metadata
+        id: meta
+        env:
+          RAW_VERSION: ${{ inputs.version }}
+        run: |
+          version="${RAW_VERSION#v}"
+
+          if [ -z "$version" ]; then
+            echo "Release version must not be empty." >&2
+            exit 1
+          fi
+
+          if printf '%s' "$version" | grep -q '[[:space:]]'; then
+            echo "Release version must not contain whitespace." >&2
+            exit 1
+          fi
+
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "tag=v$version" >> "$GITHUB_OUTPUT"
+          echo "release_name=v$version" >> "$GITHUB_OUTPUT"
+          echo "versioned_source_artifact=release-versioned-source" >> "$GITHUB_OUTPUT"
+
+      - name: Fail if the git tag already exists
+        env:
+          TAG: ${{ steps.meta.outputs.tag }}
+        run: |
+          if git rev-parse --verify "refs/tags/$TAG" >/dev/null 2>&1; then
+            echo "Git tag '$TAG' already exists." >&2
+            exit 1
+          fi
+
+      - name: Fail if the version already exists on PyPI
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          status="$(curl --silent --show-error --output /dev/null --write-out '%{http_code}' "https://pypi.org/pypi/torchcurves/${VERSION}/json")"
+
+          case "$status" in
+            200)
+              echo "torchcurves $VERSION already exists on PyPI." >&2
+              exit 1
+              ;;
+            404)
+              ;;
+            *)
+              echo "Unexpected response from the PyPI JSON API: $status" >&2
+              exit 1
+              ;;
+          esac
+
+  prepare_versioned_source:
+    name: Prepare versioned source
+    needs: meta
+    uses: ./.github/workflows/prepare-versioned-source.yml
+    with:
+      version: ${{ needs.meta.outputs.version }}
+      ref: ${{ github.sha }}
+      artifact_name: ${{ needs.meta.outputs.versioned_source_artifact }}
+
+  build:
+    name: Validate and build release artifacts
+    needs:
+      - meta
+      - prepare_versioned_source
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Download versioned source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.versioned_source_artifact }}
+          path: versioned-source/
+
+      - name: Install versioned source file
+        run: |
+          cp versioned-source/src/torchcurves/__init__.py src/torchcurves/__init__.py
+
+      - name: Install uv
+        uses: astral-sh/setup-uv@v3
+
+      - name: Set up Python 3.13
+        run: uv python install 3.13
+
+      - name: Install dependencies
+        run: |
+          uv venv
+          uv sync --all-groups
+
+      - name: Lint with ruff
+        run: |
+          uv run ruff check src/ tests/
+
+      - name: Type check with pyright
+        run: |
+          uv run pyright src/
+
+      - name: Test with pytest
+        run: |
+          uv run pytest tests/ -v
+
+      - name: Build package
+        run: |
+          uv build
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+  publish:
+    name: Publish package to PyPI
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: pypi
+      url: https://pypi.org/project/torchcurves/
+    permissions:
+      id-token: write
+    steps:
+      - name: Download package artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: python-package-distributions
+          path: dist/
+
+      - name: Publish package distributions to PyPI
+        uses: pypa/gh-action-pypi-publish@release/v1
+
+  finalize:
+    name: Commit version, tag, and create GitHub release
+    needs:
+      - meta
+      - prepare_versioned_source
+      - publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.sha }}
+
+      - name: Download versioned source artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ needs.meta.outputs.versioned_source_artifact }}
+          path: versioned-source/
+
+      - name: Install versioned source file
+        run: |
+          cp versioned-source/src/torchcurves/__init__.py src/torchcurves/__init__.py
+
+      - name: Configure git user
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Commit the version bump
+        env:
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          git add src/torchcurves/__init__.py
+
+          if git diff --cached --quiet; then
+            echo "Version is already ${VERSION}; no commit created."
+            exit 0
+          fi
+
+          git commit -m "Release ${VERSION}"
+
+      - name: Create annotated git tag
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          git tag -a "$TAG" -m "Release ${VERSION}"
+
+      - name: Push release commit and tag
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+        run: |
+          git push --atomic origin HEAD:master "$TAG"
+
+      - name: Create GitHub release
+        uses: actions/github-script@v7
+        env:
+          TAG: ${{ needs.meta.outputs.tag }}
+          RELEASE_NAME: ${{ needs.meta.outputs.release_name }}
+          RELEASE_NOTES: ${{ inputs.release_notes }}
+        with:
+          script: |
+            await github.rest.repos.createRelease({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              tag_name: process.env.TAG,
+              name: process.env.RELEASE_NAME,
+              body: process.env.RELEASE_NOTES,
+            });
