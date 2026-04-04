@@ -18,13 +18,16 @@ repos:
     # Run the formatter.
     - id: ruff-format
       types_or: [ python, pyi ]
-# .pre-commit-config.yaml
-- repo: https://github.com/RobertCraigie/pyright-python
-  rev: v1.1.408
+
+- repo: local
   hooks:
     - id: pyright
-      args: [ src ]
+      name: pyright
+      entry: uv run pyright src
+      language: system
       pass_filenames: false
+      types: [python]
+
 - repo: https://github.com/astral-sh/uv-pre-commit
   rev: 0.5.25
   hooks:
