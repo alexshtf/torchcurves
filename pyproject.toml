@@ -6,7 +6,8 @@ authors = [
     { name = "Alex Shtoff", email = "alex.shtf@gmail.com" }
 ]
 readme = "README.md"
-license = { text = "Apache 2.0" }
+license = "Apache-2.0"
+license-files = ["LICENSE"]
 requires-python = ">=3.9"
 keywords = ["pytorch", "bspline", "curves", "differentiable", "deep-learning", "geometric-deep-learning"]
 classifiers = [
@@ -15,10 +16,12 @@ classifiers = [
     "Intended Audience :: Science/Research",
     "License :: OSI Approved :: Apache Software License",
     "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3 :: Only",
     "Programming Language :: Python :: 3.9",
     "Programming Language :: Python :: 3.10",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Topic :: Scientific/Engineering :: Artificial Intelligence",
     "Topic :: Scientific/Engineering :: Mathematics",
 ]
@@ -64,6 +67,7 @@ examples = [
 Homepage = "https://github.com/alexshtf/torchcurves"
 Repository = "https://github.com/alexshtf/torchcurves"
 Issues = "https://github.com/alexshtf/torchcurves/issues"
+Documentation = "https://torchcurves.readthedocs.io/en/stable/"
 
 [build-system]
 requires = ["hatchling"]
