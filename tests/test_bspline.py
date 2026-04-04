@@ -1,7 +1,10 @@
+import re
+
 import pytest
 import torch
 from scipy.interpolate import BSpline as SciPyBSpline
 
+from torchcurves import BSplineCurve
 from torchcurves.functional import bspline_curves, uniform_augmented_knots
 
 DTYPE = torch.float64
@@ -9,9 +12,7 @@ DTYPE = torch.float64
 
 def _seeded_control_points(num_curves: int, n_control_points: int, dim: int) -> torch.Tensor:
     generator = torch.Generator().manual_seed(0)
-    return torch.randn(
-        num_curves, n_control_points, dim, dtype=DTYPE, generator=generator
-    )
+    return torch.randn(num_curves, n_control_points, dim, dtype=DTYPE, generator=generator)
 
 
 def _torch_single_curve_single_sample(
@@ -55,9 +56,7 @@ def _scipy_single_curve_single_sample(
         (3, 6, 2, 1.0),
     ],
 )
-def test_single_curve_single_sample_matches_scipy(
-    degree: int, n_control_points: int, dim: int, u_value: float
-) -> None:
+def test_single_curve_single_sample_matches_scipy(degree: int, n_control_points: int, dim: int, u_value: float) -> None:
     control_points_single = _seeded_control_points(1, n_control_points, dim)
     knots = uniform_augmented_knots(n_control_points, degree, dtype=DTYPE)
 
@@ -139,3 +138,34 @@ def test_multiple_curves_multiple_samples_matches_nested_single_single_concatena
 
     expected = torch.cat(rows, dim=0)  # (batch, curves, dim)
     torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_bspline_module_accepts_batched_curve_inputs() -> None:
+    model = BSplineCurve(num_curves=3, dim=2, degree=3, knots_config=7).double()
+    u = torch.tensor(
+        [
+            [-0.9, -0.1, 0.2],
+            [0.0, 0.3, 0.7],
+            [0.4, -0.8, 1.0],
+            [0.9, 0.1, -0.4],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = model(u)
+
+    assert actual.shape == (4, 3, 2)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4,), (4, 3, 1), (4, 2)],
+    ids=["rank-1", "rank-3", "wrong-num-curves"],
+)
+def test_bspline_module_rejects_invalid_input_shapes(shape: tuple[int, ...]) -> None:
+    model = BSplineCurve(num_curves=3, dim=2)
+    u = torch.rand(shape)
+    expected_message = f"Input u must be a 2D tensor of shape (N, num_curves={model.num_curves}). Got shape: {u.shape}"
+
+    with pytest.raises(ValueError, match=re.escape(expected_message)):
+        model(u)

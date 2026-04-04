@@ -1,7 +1,10 @@
+import re
+
 import numpy as np
 import pytest
 import torch
 
+from torchcurves import LegendreCurve
 from torchcurves.functional import legendre_curves
 
 DTYPE = torch.float64
@@ -12,20 +15,15 @@ def _seeded_coefficients(num_curves: int, degree: int, dim: int) -> torch.Tensor
     return torch.randn(degree + 1, num_curves, dim, dtype=DTYPE, generator=generator)
 
 
-def _torch_single_curve_single_sample(
-    x_value: float, coefficients_single: torch.Tensor
-) -> torch.Tensor:
+def _torch_single_curve_single_sample(x_value: float, coefficients_single: torch.Tensor) -> torch.Tensor:
     x_single = torch.tensor([[x_value]], dtype=DTYPE)  # (batch=1, curves=1)
     return legendre_curves(x_single, coefficients_single)  # (1, 1, dim)
 
 
-def _numpy_single_curve_single_sample(
-    x_value: float, coefficients_single: torch.Tensor
-) -> torch.Tensor:
+def _numpy_single_curve_single_sample(x_value: float, coefficients_single: torch.Tensor) -> torch.Tensor:
     coeff_np = coefficients_single[:, 0, :].detach().cpu().numpy()  # (degree+1, dim)
     values = [
-        float(np.polynomial.legendre.legval(x_value, coeff_np[:, dim_index]))
-        for dim_index in range(coeff_np.shape[1])
+        float(np.polynomial.legendre.legval(x_value, coeff_np[:, dim_index])) for dim_index in range(coeff_np.shape[1])
     ]
     return torch.tensor(values, dtype=coefficients_single.dtype).view(1, 1, -1)
 
@@ -39,9 +37,7 @@ def _numpy_single_curve_single_sample(
         (7, 1, 0.95),
     ],
 )
-def test_single_curve_single_sample_matches_numpy(
-    degree: int, dim: int, x_value: float
-) -> None:
+def test_single_curve_single_sample_matches_numpy(degree: int, dim: int, x_value: float) -> None:
     coefficients_single = _seeded_coefficients(1, degree, dim)
     actual = _torch_single_curve_single_sample(x_value, coefficients_single)
     expected = _numpy_single_curve_single_sample(x_value, coefficients_single)
@@ -114,3 +110,34 @@ def test_multiple_curves_multiple_samples_matches_nested_single_single_concatena
 
     expected = torch.cat(rows, dim=0)  # (batch, curves, dim)
     torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_legendre_module_accepts_batched_curve_inputs() -> None:
+    model = LegendreCurve(num_curves=3, dim=2, degree=5).double()
+    u = torch.tensor(
+        [
+            [-0.9, -0.1, 0.2],
+            [0.0, 0.3, 0.7],
+            [0.4, -0.8, 1.0],
+            [0.9, 0.1, -0.4],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = model(u)
+
+    assert actual.shape == (4, 3, 2)
+
+
+@pytest.mark.parametrize(
+    "shape",
+    [(4,), (4, 3, 1), (4, 2)],
+    ids=["rank-1", "rank-3", "wrong-num-curves"],
+)
+def test_legendre_module_rejects_invalid_input_shapes(shape: tuple[int, ...]) -> None:
+    model = LegendreCurve(num_curves=3, dim=2, degree=5)
+    u = torch.rand(shape)
+    expected_message = f"Input u must be a 2D tensor of shape (N, num_curves={model.num_curves}). Got shape: {u.shape}"
+
+    with pytest.raises(ValueError, match=re.escape(expected_message)):
+        model(u)
