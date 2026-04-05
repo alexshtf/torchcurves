@@ -198,6 +198,7 @@ jobs:
         with:
           fetch-depth: 0
           ref: ${{ github.sha }}
+          ssh-key: ${{ secrets.RELEASE_DEPLOY_KEY }}
 
       - name: Download versioned source artifact
         uses: actions/download-artifact@v4
@@ -213,6 +214,10 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+
+      - name: Use SSH remote for push
+        run: |
+          git remote set-url origin git@github.com:${{ github.repository }}.git
 
       - name: Commit the version bump
         env:
