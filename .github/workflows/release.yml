@@ -130,7 +130,7 @@ jobs:
 
       - name: Install versioned source file
         run: |
-          cp versioned-source/src/torchcurves/__init__.py src/torchcurves/__init__.py
+          cp versioned-source/__init__.py src/torchcurves/__init__.py
 
       - name: Install uv
         uses: astral-sh/setup-uv@v3
@@ -207,7 +207,7 @@ jobs:
 
       - name: Install versioned source file
         run: |
-          cp versioned-source/src/torchcurves/__init__.py src/torchcurves/__init__.py
+          cp versioned-source/__init__.py src/torchcurves/__init__.py
 
       - name: Configure git user
         run: |
