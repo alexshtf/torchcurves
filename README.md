@@ -45,6 +45,9 @@ y = curve(u)                # (B, C, D)
 print(u.shape, "->", y.shape)            # torch.Size([4, 3]) -> torch.Size([4, 3, 2])
 ```
 
+If the coefficients come from another network instead of living inside the module,
+use `tc.BSplineBasis` and pass the coefficients explicitly at `forward` time.
+
 For more information:
 - [Documentation site](https://torchcurves.readthedocs.io/en/latest/).
 - [Example notebooks](https://torchcurves.readthedocs.io/en/latest/example_notebooks.html) for you to try out.
@@ -104,6 +107,7 @@ and use it as the coefficient vector for a B-spline curve.
 ```python
 import torch
 from torch import nn
+import torchcurves as tc
 import torchcurves.functional as tcf
 
 
@@ -114,31 +118,26 @@ class AuctionWinModel(nn.Module):
             input_features=num_auction_features,
             output_features=num_bid_coefficients,
         )
-        self.register_buffer(
-            "spline_knots",
-            tcf.uniform_augmented_knots(
+        self.bid_basis = tc.BSplineBasis(
+            degree=3,
+            knots_config=tcf.uniform_augmented_knots(
                 n_control_points=num_bid_coefficients,
                 degree=3,
                 k_min=0,
                 k_max=1,
             ),
+            normalize_fn="arctan",
         )
 
     def forward(self, auction_features, bids):
         # map auction features to increasing spline coefficients
         spline_coeffs = self._make_increasing(self.auction_encoder(auction_features))
 
-        # map bids to [0, 1] using the arctan (or any other) normalization
-        mapped_bid = tcf.arctan(bids)
-
-        # evaluate the spline at the mapped bids, treating each
-        # mini-batch sample as a separate curve
-        return tcf.bspline_curves(
-            mapped_bid.unsqueeze(0),     # 1 x B (B curves in 1 dimension)
+        # each mini-batch sample is treated as its own curve
+        return self.bid_basis(
+            bids.unsqueeze(0),           # 1 x B (B curves in 1 dimension)
             spline_coeffs.unsqueeze(-1), # B x C x 1 (B curves with C coefs in 1 dimension)
-            self.spline_knots,
-            degree=3
-        )
+        ).squeeze(0).squeeze(-1)
 
     def _make_increasing(self, x):
         # transform a mini-batch of vectors to a mini-batch of increasing vectors

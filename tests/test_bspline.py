@@ -5,8 +5,8 @@ import torch
 from scipy.interpolate import BSpline as SciPyBSpline
 from torch.autograd import gradcheck
 
-from torchcurves import BSplineCurve
-from torchcurves.functional import bspline_curves, uniform_augmented_knots
+from torchcurves import BSplineBasis, BSplineCurve
+from torchcurves.functional import arctan, bspline_curves, uniform_augmented_knots
 
 DTYPE = torch.float64
 GRADCHECK_EPS = 1e-6
@@ -245,6 +245,209 @@ def test_bspline_module_accepts_batched_curve_inputs() -> None:
     actual = model(u)
 
     assert actual.shape == (4, 3, 2)
+
+
+def test_bspline_module_accepts_explicit_knot_tensor() -> None:
+    knots = uniform_augmented_knots(7, 3, dtype=DTYPE)
+    model = BSplineCurve(num_curves=2, dim=3, degree=3, knots_config=knots).double()
+    u = torch.tensor(
+        [
+            [-0.9, 0.2],
+            [0.1, 0.8],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = model(u)
+
+    assert actual.shape == (2, 2, 3)
+    assert model.n_control_points_per_curve == 7
+    torch.testing.assert_close(model.knots, knots)
+
+
+def test_bspline_curve_uses_basis_for_forward() -> None:
+    model = BSplineCurve(num_curves=3, dim=2, degree=3, knots_config=7).double()
+    u = torch.tensor(
+        [
+            [-0.7, -0.1, 0.2],
+            [0.0, 0.5, 0.9],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = model(u)
+    expected = model.basis(u, model.control_points)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_bspline_curve_exposes_basis_aliases() -> None:
+    model = BSplineCurve(
+        num_curves=2,
+        dim=3,
+        degree=2,
+        knots_config=6,
+        normalize_fn="clamp",
+        normalization_scale=0.25,
+    )
+
+    assert isinstance(model.basis, BSplineBasis)
+    assert model.degree == model.basis.degree == 2
+    assert model.knots is model.basis.knots
+    assert model.normalize_fn is model.basis.normalize_fn
+    assert model.normalization_scale == model.basis.normalization_scale == 0.25
+    assert model.n_control_points_per_curve == model.basis.n_control_points_per_curve == 6
+
+
+def test_bspline_basis_with_uniform_knots_matches_manual_functional_path() -> None:
+    degree = 3
+    n_control_points = 7
+    dim = 2
+    num_curves = 3
+
+    basis = BSplineBasis(
+        degree=degree,
+        knots_config=n_control_points,
+        normalize_fn="clamp",
+    ).double()
+    coefficients = _seeded_control_points(num_curves, n_control_points, dim)
+    u = torch.tensor(
+        [
+            [-0.8, -0.1, 0.6],
+            [0.1, 0.2, 0.9],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = basis(u, coefficients)
+    expected = bspline_curves(u, coefficients, basis.knots, degree)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_bspline_basis_with_explicit_knots_matches_manual_functional_path() -> None:
+    degree = 2
+    knots = uniform_augmented_knots(6, degree, dtype=DTYPE, k_min=0, k_max=1)
+    basis = BSplineBasis(degree=degree, knots_config=knots, normalize_fn="clamp").double()
+    coefficients = _seeded_control_points(2, 6, 1)
+    u = torch.tensor(
+        [
+            [0.0, 0.2],
+            [0.4, 1.0],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = basis(u, coefficients)
+    expected = bspline_curves(u, coefficients, knots, degree)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_bspline_basis_normalizes_to_custom_knot_interval() -> None:
+    degree = 3
+    knots = uniform_augmented_knots(6, degree, dtype=DTYPE, k_min=0, k_max=1)
+    basis = BSplineBasis(
+        degree=degree,
+        knots_config=knots,
+        normalize_fn="arctan",
+    ).double()
+    coefficients = _seeded_control_points(2, 6, 1)
+    raw_u = torch.tensor(
+        [
+            [-3.0, 0.0],
+            [1.0, 2.5],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = basis(raw_u, coefficients)
+    expected = bspline_curves(
+        arctan(raw_u, out_min=0, out_max=1),
+        coefficients,
+        knots,
+        degree,
+    )
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_message"),
+    [
+        ({"degree": -1}, "degree must be a non-negative integer."),
+        (
+            {"normalization_scale": 0.0},
+            "Normalization scale must be positive, but 0.0 was given.",
+        ),
+        (
+            {"knots_config": torch.ones(2, 2)},
+            "Provided knots_config tensor must be 1D.",
+        ),
+        (
+            {"knots_config": 3, "degree": 3},
+            "Number of control points (3) must be greater than the degree (3).",
+        ),
+        (
+            {"knots_config": [1, 2, 3]},
+            "knots_config must be an int (number of control points) or a torch.Tensor (knot vector).",
+        ),
+    ],
+)
+def test_bspline_basis_rejects_invalid_constructor_inputs(kwargs: dict[str, object], expected_message: str) -> None:
+    with pytest.raises((TypeError, ValueError), match=re.escape(expected_message)):
+        BSplineBasis(**kwargs)
+
+
+def test_bspline_basis_rejects_invalid_u_rank() -> None:
+    basis = BSplineBasis(degree=3, knots_config=7)
+    coefficients = torch.randn(2, 7, 3)
+    u = torch.randn(2, 1, 1)
+    expected_message = f"Input u must be a 2D tensor of shape (batch_size, num_curves). Got shape: {u.shape}"
+
+    with pytest.raises(ValueError, match=re.escape(expected_message)):
+        basis(u, coefficients)
+
+
+def test_bspline_basis_rejects_invalid_coefficients_rank() -> None:
+    basis = BSplineBasis(degree=3, knots_config=7)
+    u = torch.randn(2, 3)
+    coefficients = torch.randn(3, 7)
+    expected_message = (
+        "Input coefficients must be a 3D tensor of shape "
+        "(num_curves, "
+        f"n_control_points_per_curve={basis.n_control_points_per_curve}, dim). "
+        f"Got shape: {coefficients.shape}"
+    )
+
+    with pytest.raises(ValueError, match=re.escape(expected_message)):
+        basis(u, coefficients)
+
+
+def test_bspline_basis_rejects_curve_count_mismatch() -> None:
+    basis = BSplineBasis(degree=3, knots_config=7)
+    u = torch.randn(2, 3)
+    coefficients = torch.randn(2, 7, 1)
+    expected_message = (
+        "The number of curves must match between u and coefficients. "
+        f"Got u.shape[1]={u.shape[1]} and coefficients.shape[0]={coefficients.shape[0]}."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(expected_message)):
+        basis(u, coefficients)
+
+
+def test_bspline_basis_rejects_control_point_count_mismatch() -> None:
+    basis = BSplineBasis(degree=3, knots_config=7)
+    u = torch.randn(2, 3)
+    coefficients = torch.randn(3, 6, 1)
+    expected_message = (
+        "The number of control points in coefficients must match this basis. "
+        f"Expected {basis.n_control_points_per_curve}, got {coefficients.shape[1]}."
+    )
+
+    with pytest.raises(ValueError, match=re.escape(expected_message)):
+        basis(u, coefficients)
 
 
 @pytest.mark.parametrize(

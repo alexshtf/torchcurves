@@ -16,7 +16,7 @@ def uniform_augmented_knots(
 
     This function returns a 1D tensor containing knot values. The internal knots are computed uniformly in the interval
     [-1, 1] for the given number of control points and degree. The head and tail, each containing (degree + 1) identical
-    knots, conforming to the not-a-knot boundary conditions.
+    knots, produce an augmented knot vector with repeated boundary knots.
 
     Args:
         n_control_points (int): The total number of control points for the B-spline.
@@ -39,17 +39,13 @@ def uniform_augmented_knots(
     """
     num_internal_knots = n_control_points - degree - 1
     if num_internal_knots < 0:
-        raise ValueError(
-            "Not enough control points for the given degree to form internal knots."
-        )
+        raise ValueError("Not enough control points for the given degree to form internal knots.")
 
     head_knots = torch.full((degree + 1,), k_min, dtype=dtype, device=device)
     tail_knots = torch.full((degree + 1,), k_max, dtype=dtype, device=device)
 
     if num_internal_knots > 0:
-        internal_knots = torch.linspace(
-            k_min, k_max, num_internal_knots + 2, dtype=dtype, device=device
-        )[1:-1]
+        internal_knots = torch.linspace(k_min, k_max, num_internal_knots + 2, dtype=dtype, device=device)[1:-1]
         return torch.cat((head_knots, internal_knots, tail_knots))
     else:
         return torch.cat((head_knots, tail_knots))
@@ -66,17 +62,11 @@ class _BSplineFunction(torch.autograd.Function):
         return spans.unsqueeze(-1) + offsets
 
     @staticmethod
-    def _curve_indices(
-        num_samples: int, num_curves: int, width: int, device: torch.device
-    ) -> torch.Tensor:
-        return torch.arange(num_curves, device=device).view(1, -1, 1).expand(
-            num_samples, -1, width
-        )
+    def _curve_indices(num_samples: int, num_curves: int, width: int, device: torch.device) -> torch.Tensor:
+        return torch.arange(num_curves, device=device).view(1, -1, 1).expand(num_samples, -1, width)
 
     @staticmethod
-    def _gather_control_points(
-        control_points: torch.Tensor, cp_indices: torch.Tensor
-    ) -> torch.Tensor:
+    def _gather_control_points(control_points: torch.Tensor, cp_indices: torch.Tensor) -> torch.Tensor:
         num_samples, num_curves, width = cp_indices.shape
         curve_indices = _BSplineFunction._curve_indices(
             num_samples=num_samples,
@@ -87,9 +77,7 @@ class _BSplineFunction(torch.autograd.Function):
         return control_points[curve_indices, cp_indices, :]
 
     @staticmethod
-    def find_spans(
-        u: torch.Tensor, knots: torch.Tensor, degree: int, n_control_points: int
-    ) -> torch.Tensor:
+    def find_spans(u: torch.Tensor, knots: torch.Tensor, degree: int, n_control_points: int) -> torch.Tensor:
         """Find the knot span index for each parameter value.
 
         Args:
@@ -107,16 +95,12 @@ class _BSplineFunction(torch.autograd.Function):
         min_knot = knots[degree]
         max_knot = knots[n_control_points]
         spans[u <= min_knot + _BSplineFunction.ZERO_TOLERANCE] = degree
-        spans[u >= max_knot - _BSplineFunction.ZERO_TOLERANCE] = (
-            n_control_points - 1
-        )
+        spans[u >= max_knot - _BSplineFunction.ZERO_TOLERANCE] = n_control_points - 1
         spans.clamp_(min=degree, max=n_control_points - 1)
         return spans
 
     @staticmethod
-    def cox_de_boor(
-        u: torch.Tensor, knots: torch.Tensor, spans: torch.Tensor, degree: int
-    ) -> torch.Tensor:
+    def cox_de_boor(u: torch.Tensor, knots: torch.Tensor, spans: torch.Tensor, degree: int) -> torch.Tensor:
         """Compute non-zero B-spline basis values using Cox-de Boor recursion.
 
         Args:
@@ -130,15 +114,9 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         num_samples, num_curves = u.shape
-        basis = torch.zeros(
-            num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype
-        )
-        left = torch.empty(
-            num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype
-        )
-        right = torch.empty(
-            num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype
-        )
+        basis = torch.zeros(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
+        left = torch.empty(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
+        right = torch.empty(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
 
         basis[..., 0].fill_(1)
         zero = torch.zeros((), device=u.device, dtype=u.dtype)
@@ -183,9 +161,7 @@ class _BSplineFunction(torch.autograd.Function):
             Points on curves, shape (N, M, D).
 
         """
-        gathered_control_points = _BSplineFunction._gather_control_points(
-            control_points, cp_indices
-        )
+        gathered_control_points = _BSplineFunction._gather_control_points(control_points, cp_indices)
         return (basis.unsqueeze(-1) * gathered_control_points).sum(dim=2)
 
     @staticmethod
@@ -233,9 +209,7 @@ class _BSplineFunction(torch.autograd.Function):
             return torch.zeros(*u.shape, 1, device=u.device, dtype=u.dtype)
 
         lower_deg_basis = _BSplineFunction.cox_de_boor(u, knots, spans, degree - 1)
-        alpha, beta = _BSplineFunction.basis_derivative_coefficients(
-            knots, spans, degree
-        )
+        alpha, beta = _BSplineFunction.basis_derivative_coefficients(knots, spans, degree)
         lower_pad_right = F.pad(lower_deg_basis, (0, 1))
         lower_pad_left = F.pad(lower_deg_basis, (1, 0))
         return torch.addcmul(alpha * lower_pad_left, beta, lower_pad_right, value=-1)
@@ -255,9 +229,7 @@ class _BSplineFunction(torch.autograd.Function):
         )
 
         updates = grad_output.unsqueeze(2) * basis.unsqueeze(3)
-        updates_flat = updates.permute(1, 0, 2, 3).reshape(
-            num_curves, -1, grad_output.shape[-1]
-        )
+        updates_flat = updates.permute(1, 0, 2, 3).reshape(num_curves, -1, grad_output.shape[-1])
         indices_flat = cp_indices.permute(1, 0, 2).reshape(num_curves, -1)
         indices_expanded = indices_flat.unsqueeze(-1).expand_as(updates_flat)
         grad_control_points.scatter_add_(1, indices_expanded, updates_flat)
@@ -274,9 +246,7 @@ class _BSplineFunction(torch.autograd.Function):
         need_grad_u = ctx.needs_input_grad[0]
         need_grad_cp = ctx.needs_input_grad[1]
 
-        spans = _BSplineFunction.find_spans(
-            u, knots, degree, control_points.shape[1]
-        )
+        spans = _BSplineFunction.find_spans(u, knots, degree, control_points.shape[1])
         basis = _BSplineFunction.cox_de_boor(u, knots, spans, degree)
         cp_indices = _BSplineFunction._control_point_indices(spans, degree)
         points = _BSplineFunction.evaluate_curve(
@@ -316,15 +286,9 @@ class _BSplineFunction(torch.autograd.Function):
             u = next(saved_iter)
             control_points = next(saved_iter)
             knots = next(saved_iter)
-            basis_deriv = _BSplineFunction.compute_basis_derivatives(
-                u, knots, spans, degree
-            )
-            gathered_control_points = _BSplineFunction._gather_control_points(
-                control_points, cp_indices
-            )
-            d_points_du = torch.einsum(
-                "nmi,nmid->nmd", basis_deriv, gathered_control_points
-            )
+            basis_deriv = _BSplineFunction.compute_basis_derivatives(u, knots, spans, degree)
+            gathered_control_points = _BSplineFunction._gather_control_points(control_points, cp_indices)
+            d_points_du = torch.einsum("nmi,nmid->nmd", basis_deriv, gathered_control_points)
             grad_u = (grad_output * d_points_du).sum(dim=-1)
 
         grad_control_points = None
@@ -358,8 +322,8 @@ def bspline_curves(
             points each, embedded in :math:`\mathbb{R}^D`.
         knots: A 1D tensor of size :math:`M + P + 1` representing the spline function's
             knot vector, where :math:`P` is the degree of the piecewise polynomials defining the spline function.
-            ``None`` means uniformly-spaced knots in :math:`[-1, 1]` with the not-a-knot boundary
-            conditions. (default: ``None``)
+            ``None`` means uniformly spaced augmented knots in :math:`[-1, 1]` with
+            repeated boundary knots. (default: ``None``)
         degree: The degree :math:`P` of the B-Spline function. (default: ``3`` meaning a cubic spline)
 
     Returns:
