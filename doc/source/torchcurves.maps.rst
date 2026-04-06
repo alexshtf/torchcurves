@@ -16,6 +16,7 @@ Built-in dotted presets
 - ``real.arctan``
 - ``real.clamp``
 - ``nonneg.rational``
+- ``nonneg.arctan``
 
 Configured map objects
 ----------------------
@@ -33,6 +34,12 @@ Use the ``torchcurves.maps`` namespace when you want a configured map object:
        knots_config=10,
        parameter_range=(0.0, 1.0),
        input_map=tc.maps.Nonneg.rational(),
+   )
+   tc.BSplineBasis(
+       degree=3,
+       knots_config=10,
+       parameter_range=(0.0, 1.0),
+       input_map=tc.maps.Nonneg.arctan(scale=2.0),
    )
 
 Custom input maps

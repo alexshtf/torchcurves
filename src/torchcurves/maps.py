@@ -12,6 +12,7 @@ Built-in dotted presets:
 - ``"real.arctan"``
 - ``"real.clamp"``
 - ``"nonneg.rational"``
+- ``"nonneg.arctan"``
 
 Example usage includes ``tc.BSplineCurve(4, 8, input_map="real.clamp")``,
 ``tc.LegendreCurve(4, 8, degree=5, input_map=tc.maps.Real.rational(scale=2.0))``,
@@ -38,6 +39,10 @@ def _validate_scale(scale: float) -> float:
 
 def _scale_from_unit_interval(x: torch.Tensor, out_min: float, out_max: float) -> torch.Tensor:
     return x * (out_max - out_min) + out_min
+
+
+def _nonnegative_part(x: TensorLike) -> torch.Tensor:
+    return torch.clamp_min(torch.as_tensor(x), 0)
 
 
 @dataclass(frozen=True)
@@ -81,9 +86,21 @@ class _NonnegRationalMap:
         object.__setattr__(self, "scale", _validate_scale(self.scale))
 
     def __call__(self, x: TensorLike, out_min: float, out_max: float) -> torch.Tensor:
-        x_tensor = torch.as_tensor(x)
-        x_nonnegative = torch.clamp_min(x_tensor, 0)
+        x_nonnegative = _nonnegative_part(x)
         mapped = x_nonnegative / torch.sqrt(self.scale**2 + x_nonnegative.square())
+        return _scale_from_unit_interval(mapped, out_min=out_min, out_max=out_max)
+
+
+@dataclass(frozen=True)
+class _NonnegArctanMap:
+    scale: float = 1.0
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "scale", _validate_scale(self.scale))
+
+    def __call__(self, x: TensorLike, out_min: float, out_max: float) -> torch.Tensor:
+        x_nonnegative = _nonnegative_part(x)
+        mapped = 2 * torch.arctan(x_nonnegative / self.scale) / torch.pi
         return _scale_from_unit_interval(mapped, out_min=out_min, out_max=out_max)
 
 
@@ -106,6 +123,9 @@ class _NonnegNamespace:
     def rational(self, scale: float = 1.0) -> InputMap:
         return _NonnegRationalMap(scale=scale)
 
+    def arctan(self, scale: float = 1.0) -> InputMap:
+        return _NonnegArctanMap(scale=scale)
+
 
 Real = _RealNamespace()
 Nonneg = _NonnegNamespace()
@@ -115,6 +135,7 @@ _input_map_catalogue: dict[str, Callable[[], InputMap]] = {
     "real.arctan": Real.arctan,
     "real.clamp": Real.clamp,
     "nonneg.rational": Nonneg.rational,
+    "nonneg.arctan": Nonneg.arctan,
 }
 
 

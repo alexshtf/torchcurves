@@ -47,3 +47,20 @@ def test_nonnegative_rational_map_uses_the_full_target_interval() -> None:
     assert actual[0].item() == out_min
     assert actual[1].item() == out_min
     assert out_min < actual[2].item() < actual[3].item() < out_max
+
+
+def test_nonnegative_arctan_map_uses_the_full_target_interval() -> None:
+    x = torch.tensor([-3.0, 0.0, 2.0, 20.0], dtype=DTYPE)
+    scale = 2.0
+    out_min = 0.0
+    out_max = 1.0
+
+    actual = tc.maps.Nonneg.arctan(scale=scale)(x, out_min, out_max)
+
+    expected_nonnegative = torch.clamp_min(x, 0)
+    expected = 2 * torch.arctan(expected_nonnegative / scale) / torch.pi
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+    assert actual[0].item() == out_min
+    assert actual[1].item() == out_min
+    assert out_min < actual[2].item() < actual[3].item() < out_max

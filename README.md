@@ -233,6 +233,7 @@ tc.BSplineCurve(num_curves, curve_dim, input_map="real.rational")
 tc.BSplineCurve(num_curves, curve_dim, input_map="real.arctan")
 tc.BSplineCurve(num_curves, curve_dim, input_map="real.clamp")
 tc.BSplineBasis(knots_config=num_control_points, parameter_range=(0, 1), input_map="nonneg.rational")
+tc.BSplineBasis(knots_config=num_control_points, parameter_range=(0, 1), input_map="nonneg.arctan")
 ```
 
 ### Configured map objects
@@ -243,6 +244,7 @@ Use `tc.maps` objects when you want a non-default scale:
 tc.BSplineCurve(num_curves, curve_dim, input_map=tc.maps.Real.rational(scale=s))
 tc.BSplineCurve(num_curves, curve_dim, input_map=tc.maps.Real.arctan(scale=s))
 tc.BSplineCurve(num_curves, curve_dim, input_map=tc.maps.Real.clamp(scale=s))
+tc.BSplineBasis(knots_config=num_control_points, parameter_range=(0, 1), input_map=tc.maps.Nonneg.arctan(scale=s))
 ```
 
 The default rational map computes
@@ -260,7 +262,10 @@ The arctan map computes
 x \to \frac{2}{\pi} \arctan(x / s),
 ```
 
-and the clamp map clips `x / s` to the designated interval.
+The `nonneg.arctan` map uses the same formula after clamping the input below at `0`,
+so `0` maps to the left boundary and large values approach the right boundary.
+
+The clamp map clips `x / s` to the designated interval.
 
 ### Custom input maps
 
