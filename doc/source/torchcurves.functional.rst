@@ -5,7 +5,8 @@ torchcurves.functional
 
 Normalization
 -------------
-Functions for normalizing inputs to the :math:`[-1, 1]` interval, required by most parametric curves.
+Low-level helpers for mapping inputs to bounded intervals. Most users should
+prefer ``input_map`` and ``torchcurves.maps`` on the module API.
 
 .. autosummary::
     :toctree: generated

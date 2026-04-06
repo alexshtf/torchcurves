@@ -1,11 +1,11 @@
-from typing import Literal, Optional, Union
+from typing import Optional, Union
 
 import torch
 import torch.nn as nn
 
 from ..functional import legendre_curves
-from ..types import NormalizationFn
-from ._normalization import _normalization_catalogue
+from ..maps import resolve_input_map
+from ..types import InputMap
 
 
 class LegendreCurve(nn.Module):
@@ -13,7 +13,7 @@ class LegendreCurve(nn.Module):
 
     The learnable parameters are the control points (coefficients) of the
     `Legendre series <https://en.wikipedia.org/wiki/Legendre_polynomials>`_ for each curve.
-    All curves share the same degree. The input of this layer is normalized to :math:`[-1, 1]`.
+    All curves share the same degree. The input of this layer is mapped to :math:`[-1, 1]`.
     Each curve is:
 
     .. math::
@@ -27,10 +27,11 @@ class LegendreCurve(nn.Module):
         dim: Dimension of each curve's output points (:math:`D`).
         degree: Degree of the Legendre polynomial basis (shared by all curves).
             The number of coefficients per curve will be `degree + 1`.
-        normalize_fn:
-            Normalization method this layer's input. (default: "rational")
-        normalization_scale (float):
-            Scale factor for normalization (default: 1.0).
+        input_map:
+            Map from raw inputs to :math:`[-1, 1]`. Can be a dotted preset
+            string like `"real.rational"`, a map object from
+            `torchcurves.maps`, or a callable with signature
+            `f(x, out_min, out_max)`.
         checkpoint_segments:
             Optional number of segments for gradient checkpointing. Larger values save memory but increase compute.
             Only used when gradients are enabled.
@@ -42,10 +43,7 @@ class LegendreCurve(nn.Module):
         num_curves: int,
         dim: int,
         degree: int,
-        normalize_fn: Union[
-            Literal["clamp", "rational", "arctan"], NormalizationFn
-        ] = "rational",
-        normalization_scale: float = 1.0,
+        input_map: Union[str, InputMap] = "real.rational",
         checkpoint_segments: Optional[int] = None,
     ):
         super().__init__()
@@ -56,36 +54,19 @@ class LegendreCurve(nn.Module):
             raise ValueError("dim must be a positive integer.")
         if not isinstance(degree, int) or degree < 0:
             raise ValueError("degree must be a non-negative integer.")
-        if checkpoint_segments is not None and (
-            not isinstance(checkpoint_segments, int) or checkpoint_segments <= 0
-        ):
+        if checkpoint_segments is not None and (not isinstance(checkpoint_segments, int) or checkpoint_segments <= 0):
             raise ValueError("checkpoint_segments must be a positive integer or None.")
 
         self.num_curves = num_curves  # M
         self.dim = dim  # D
         self.degree = degree
         self.n_coefficients = self.degree + 1  # C (coefficients per curve)
-
-        if isinstance(normalize_fn, str):
-            normalize_fn_from_catalogue = _normalization_catalogue.get(normalize_fn)
-            if normalize_fn_from_catalogue is None:
-                raise ValueError(f"Unknown normalization {normalize_fn}")
-            self.normalize_fn = normalize_fn_from_catalogue
-        else:
-            self.normalize_fn = normalize_fn
-
-        self.normalization_scale = normalization_scale
-        if self.normalization_scale <= 0:
-            raise ValueError(
-                f"Normalization scale must be positive, but {normalization_scale} was given."
-            )
+        self.input_map = resolve_input_map(input_map)
 
         self.checkpoint_segments = checkpoint_segments
 
         # Coefficients shape: (M, C, D)
-        self.coefficients = nn.Parameter(
-            torch.empty(self.n_coefficients, self.num_curves, self.dim)
-        )
+        self.coefficients = nn.Parameter(torch.empty(self.n_coefficients, self.num_curves, self.dim))
         nn.init.xavier_uniform_(self.coefficients)
 
     def forward(self, u: torch.Tensor) -> torch.Tensor:
@@ -104,9 +85,7 @@ class LegendreCurve(nn.Module):
                 f"Input u must be a 2D tensor of shape (N, num_curves={self.num_curves}). Got shape: {u.shape}"
             )
 
-        u_normalized = self.normalize_fn(
-            u, self.normalization_scale, out_min=-1.0, out_max=1.0
-        )
+        u_normalized = self.input_map(u, -1.0, 1.0)
         return legendre_curves(
             u_normalized,
             self.coefficients,

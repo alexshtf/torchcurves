@@ -4,8 +4,9 @@ import numpy as np
 import pytest
 import torch
 
+import torchcurves as tc
 from torchcurves import LegendreCurve
-from torchcurves.functional import legendre_curves
+from torchcurves.functional import arctan, clamp, legendre_curves, rational
 
 DTYPE = torch.float64
 
@@ -26,6 +27,11 @@ def _numpy_single_curve_single_sample(x_value: float, coefficients_single: torch
         float(np.polynomial.legendre.legval(x_value, coeff_np[:, dim_index])) for dim_index in range(coeff_np.shape[1])
     ]
     return torch.tensor(values, dtype=coefficients_single.dtype).view(1, 1, -1)
+
+
+def _tanh_map(x: torch.Tensor, out_min: float, out_max: float) -> torch.Tensor:
+    mapped = torch.tanh(x)
+    return 0.5 * (mapped + 1.0) * (out_max - out_min) + out_min
 
 
 @pytest.mark.parametrize(
@@ -127,6 +133,87 @@ def test_legendre_module_accepts_batched_curve_inputs() -> None:
     actual = model(u)
 
     assert actual.shape == (4, 3, 2)
+
+
+@pytest.mark.parametrize(
+    ("input_map", "expected_fn"),
+    [
+        ("real.rational", rational),
+        ("real.arctan", arctan),
+        ("real.clamp", clamp),
+    ],
+)
+def test_legendre_curve_with_string_input_map_matches_manual_functional_path(input_map: str, expected_fn) -> None:
+    model = LegendreCurve(num_curves=2, dim=3, degree=4, input_map=input_map).double()
+    u = torch.tensor(
+        [
+            [-3.0, -0.4],
+            [0.5, 2.0],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = model(u)
+    expected = legendre_curves(expected_fn(u, out_min=-1.0, out_max=1.0), model.coefficients)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_legendre_curve_with_object_input_map_matches_manual_functional_path() -> None:
+    input_map = tc.maps.Real.rational(scale=0.5)
+    model = LegendreCurve(num_curves=2, dim=3, degree=4, input_map=input_map).double()
+    u = torch.tensor(
+        [
+            [-3.0, -0.4],
+            [0.5, 2.0],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = model(u)
+    expected = legendre_curves(
+        rational(u, scale=0.5, out_min=-1.0, out_max=1.0),
+        model.coefficients,
+    )
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+    assert model.input_map is input_map
+
+
+def test_legendre_curve_supports_plain_callable_input_map() -> None:
+    model = LegendreCurve(num_curves=2, dim=3, degree=4, input_map=_tanh_map).double()
+    u = torch.tensor(
+        [
+            [-3.0, -0.4],
+            [0.5, 2.0],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = model(u)
+    expected = legendre_curves(_tanh_map(u, -1.0, 1.0), model.coefficients)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "expected_message"),
+    [
+        ({"degree": -1}, "degree must be a non-negative integer."),
+        ({"checkpoint_segments": 0}, "checkpoint_segments must be a positive integer or None."),
+        ({"input_map": "rational"}, "Unknown input_map rational"),
+    ],
+)
+def test_legendre_curve_rejects_invalid_constructor_inputs(kwargs: dict[str, object], expected_message: str) -> None:
+    with pytest.raises((TypeError, ValueError), match=re.escape(expected_message)):
+        base_kwargs: dict[str, object] = {"num_curves": 2, "dim": 3, "degree": 4}
+        base_kwargs.update(kwargs)
+        LegendreCurve(**base_kwargs)
+
+
+def test_legendre_curve_rejects_input_map_that_is_not_string_or_callable() -> None:
+    with pytest.raises(TypeError, match=re.escape("input_map must be a dotted preset string or a callable.")):
+        LegendreCurve(num_curves=2, dim=3, degree=4, input_map=123)  # type: ignore[arg-type]
 
 
 @pytest.mark.parametrize(

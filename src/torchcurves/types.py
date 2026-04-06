@@ -9,22 +9,20 @@ TensorLike = Union[torch.Tensor, Sequence[Numeric]]
 """A PyTorch tensor or a sequence of numbers"""
 
 
-class NormalizationFn(Protocol):
-    """Protocol for normalization functions.
+class InputMap(Protocol):
+    """Protocol for input maps.
 
-    A normalization function takes a tensor and normalizes it based on the provided parameters.
+    An input map takes raw feature values and maps them to a target interval
+    chosen by the curve family.
 
     Args:
-        tensor: The input tensor to normalize.
-        min_val: The minimum value for normalization.
-        max_val: The maximum value for normalization.
-        scale: Scale factor for normalization.
+        tensor: The input tensor to map.
+        out_min: The lower end of the target interval.
+        out_max: The upper end of the target interval.
 
     Returns:
-        The normalized tensor.
+        The mapped tensor.
 
     """
 
-    def __call__(
-        self, x: TensorLike, scale: float, out_min: float, out_max: float
-    ) -> torch.Tensor: ...
+    def __call__(self, x: TensorLike, out_min: float, out_max: float) -> torch.Tensor: ...

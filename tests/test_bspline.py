@@ -5,6 +5,7 @@ import torch
 from scipy.interpolate import BSpline as SciPyBSpline
 from torch.autograd import gradcheck
 
+import torchcurves as tc
 from torchcurves import BSplineBasis, BSplineCurve
 from torchcurves.functional import arctan, bspline_curves, uniform_augmented_knots
 
@@ -73,6 +74,11 @@ def _run_bspline_gradcheck(
     )
 
     assert passed
+
+
+def _tanh_map(x: torch.Tensor, out_min: float, out_max: float) -> torch.Tensor:
+    mapped = torch.tanh(x)
+    return 0.5 * (mapped + 1.0) * (out_max - out_min) + out_min
 
 
 @pytest.mark.parametrize(
@@ -282,20 +288,21 @@ def test_bspline_curve_uses_basis_for_forward() -> None:
 
 
 def test_bspline_curve_exposes_basis_aliases() -> None:
+    input_map = tc.maps.Real.clamp(scale=0.25)
     model = BSplineCurve(
         num_curves=2,
         dim=3,
         degree=2,
         knots_config=6,
-        normalize_fn="clamp",
-        normalization_scale=0.25,
+        parameter_range=(0.0, 2.0),
+        input_map=input_map,
     )
 
     assert isinstance(model.basis, BSplineBasis)
     assert model.degree == model.basis.degree == 2
     assert model.knots is model.basis.knots
-    assert model.normalize_fn is model.basis.normalize_fn
-    assert model.normalization_scale == model.basis.normalization_scale == 0.25
+    assert model.parameter_range == model.basis.parameter_range == (0.0, 2.0)
+    assert model.input_map is model.basis.input_map is input_map
     assert model.n_control_points_per_curve == model.basis.n_control_points_per_curve == 6
 
 
@@ -308,7 +315,7 @@ def test_bspline_basis_with_uniform_knots_matches_manual_functional_path() -> No
     basis = BSplineBasis(
         degree=degree,
         knots_config=n_control_points,
-        normalize_fn="clamp",
+        input_map="real.clamp",
     ).double()
     coefficients = _seeded_control_points(num_curves, n_control_points, dim)
     u = torch.tensor(
@@ -325,10 +332,34 @@ def test_bspline_basis_with_uniform_knots_matches_manual_functional_path() -> No
     torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
 
 
+def test_bspline_basis_with_parameter_range_generates_matching_uniform_knots() -> None:
+    degree = 2
+    n_control_points = 6
+    parameter_range = (0.0, 1.0)
+
+    basis = BSplineBasis(
+        degree=degree,
+        knots_config=n_control_points,
+        parameter_range=parameter_range,
+        input_map="real.clamp",
+    ).double()
+
+    expected_knots = uniform_augmented_knots(
+        n_control_points,
+        degree,
+        dtype=DTYPE,
+        k_min=parameter_range[0],
+        k_max=parameter_range[1],
+    )
+
+    torch.testing.assert_close(basis.knots, expected_knots, rtol=1e-12, atol=1e-12)
+    assert basis.parameter_range == parameter_range
+
+
 def test_bspline_basis_with_explicit_knots_matches_manual_functional_path() -> None:
     degree = 2
     knots = uniform_augmented_knots(6, degree, dtype=DTYPE, k_min=0, k_max=1)
-    basis = BSplineBasis(degree=degree, knots_config=knots, normalize_fn="clamp").double()
+    basis = BSplineBasis(degree=degree, knots_config=knots, input_map="real.clamp").double()
     coefficients = _seeded_control_points(2, 6, 1)
     u = torch.tensor(
         [
@@ -350,7 +381,7 @@ def test_bspline_basis_normalizes_to_custom_knot_interval() -> None:
     basis = BSplineBasis(
         degree=degree,
         knots_config=knots,
-        normalize_fn="arctan",
+        input_map=tc.maps.Real.arctan(scale=1.5),
     ).double()
     coefficients = _seeded_control_points(2, 6, 1)
     raw_u = torch.tensor(
@@ -363,9 +394,64 @@ def test_bspline_basis_normalizes_to_custom_knot_interval() -> None:
 
     actual = basis(raw_u, coefficients)
     expected = bspline_curves(
-        arctan(raw_u, out_min=0, out_max=1),
+        arctan(raw_u, scale=1.5, out_min=0, out_max=1),
         coefficients,
         knots,
+        degree,
+    )
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_bspline_basis_supports_plain_callable_input_map() -> None:
+    degree = 3
+    basis = BSplineBasis(
+        degree=degree,
+        knots_config=6,
+        input_map=_tanh_map,
+    ).double()
+    coefficients = _seeded_control_points(2, 6, 1)
+    raw_u = torch.tensor(
+        [
+            [-3.0, 0.0],
+            [1.0, 2.5],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = basis(raw_u, coefficients)
+    expected = bspline_curves(
+        _tanh_map(raw_u, *basis.parameter_range),
+        coefficients,
+        basis.knots,
+        degree,
+    )
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+def test_bspline_basis_nonnegative_rational_maps_to_custom_parameter_range() -> None:
+    degree = 3
+    basis = BSplineBasis(
+        degree=degree,
+        knots_config=6,
+        parameter_range=(0.0, 1.0),
+        input_map="nonneg.rational",
+    ).double()
+    coefficients = _seeded_control_points(2, 6, 1)
+    raw_u = torch.tensor(
+        [
+            [-3.0, 0.0],
+            [1.0, 2.5],
+        ],
+        dtype=DTYPE,
+    )
+
+    actual = basis(raw_u, coefficients)
+    expected = bspline_curves(
+        tc.maps.Nonneg.rational()(raw_u, *basis.parameter_range),
+        coefficients,
+        basis.knots,
         degree,
     )
 
@@ -377,8 +463,12 @@ def test_bspline_basis_normalizes_to_custom_knot_interval() -> None:
     [
         ({"degree": -1}, "degree must be a non-negative integer."),
         (
-            {"normalization_scale": 0.0},
-            "Normalization scale must be positive, but 0.0 was given.",
+            {"parameter_range": (1.0, 0.0)},
+            "parameter_range must satisfy min < max. Got (1.0, 0.0).",
+        ),
+        (
+            {"parameter_range": (0.0, 1.0), "knots_config": uniform_augmented_knots(6, 3)},
+            "parameter_range can only be set when knots_config is an int.",
         ),
         (
             {"knots_config": torch.ones(2, 2)},
@@ -392,11 +482,20 @@ def test_bspline_basis_normalizes_to_custom_knot_interval() -> None:
             {"knots_config": [1, 2, 3]},
             "knots_config must be an int (number of control points) or a torch.Tensor (knot vector).",
         ),
+        (
+            {"input_map": "rational"},
+            "Unknown input_map rational",
+        ),
     ],
 )
 def test_bspline_basis_rejects_invalid_constructor_inputs(kwargs: dict[str, object], expected_message: str) -> None:
     with pytest.raises((TypeError, ValueError), match=re.escape(expected_message)):
         BSplineBasis(**kwargs)
+
+
+def test_bspline_basis_rejects_input_map_that_is_not_string_or_callable() -> None:
+    with pytest.raises(TypeError, match=re.escape("input_map must be a dotted preset string or a callable.")):
+        BSplineBasis(input_map=123)  # type: ignore[arg-type]
 
 
 def test_bspline_basis_rejects_invalid_u_rank() -> None:
