@@ -1,6 +1,13 @@
 torchcurves.maps
 ================
 
+.. toctree::
+   :hidden:
+   :maxdepth: 1
+
+   torchcurves.maps.real
+   torchcurves.maps.nonneg
+
 Input maps are callables that send raw inputs to the target interval chosen by
 the curve module.
 
