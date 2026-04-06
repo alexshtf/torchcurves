@@ -120,7 +120,6 @@ class AuctionWinModel(nn.Module):
         self.bid_basis = tc.BSplineBasis(
             degree=3,
             knots_config=num_bid_coefficients,
-            parameter_range=(0, 1),
             input_map=tc.maps.Nonneg.rational(),
         )
 
