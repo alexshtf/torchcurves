@@ -45,6 +45,18 @@ def _nonnegative_part(x: TensorLike) -> torch.Tensor:
     return torch.clamp_min(torch.as_tensor(x), 0)
 
 
+def _map_nonnegative_with_symmetric_helper(
+    x: TensorLike,
+    map_fn: Callable[..., torch.Tensor],
+    scale: float,
+    out_min: float,
+    out_max: float,
+) -> torch.Tensor:
+    x_nonnegative = _nonnegative_part(x)
+    mapped = map_fn(x_nonnegative, scale=scale, out_min=-1, out_max=1)
+    return _scale_from_unit_interval(mapped, out_min=out_min, out_max=out_max)
+
+
 @dataclass(frozen=True)
 class _RealRationalMap:
     scale: float = 1.0
@@ -86,9 +98,13 @@ class _NonnegRationalMap:
         object.__setattr__(self, "scale", _validate_scale(self.scale))
 
     def __call__(self, x: TensorLike, out_min: float, out_max: float) -> torch.Tensor:
-        x_nonnegative = _nonnegative_part(x)
-        mapped = x_nonnegative / torch.sqrt(self.scale**2 + x_nonnegative.square())
-        return _scale_from_unit_interval(mapped, out_min=out_min, out_max=out_max)
+        return _map_nonnegative_with_symmetric_helper(
+            x,
+            _rational,
+            scale=self.scale,
+            out_min=out_min,
+            out_max=out_max,
+        )
 
 
 @dataclass(frozen=True)
@@ -99,9 +115,13 @@ class _NonnegArctanMap:
         object.__setattr__(self, "scale", _validate_scale(self.scale))
 
     def __call__(self, x: TensorLike, out_min: float, out_max: float) -> torch.Tensor:
-        x_nonnegative = _nonnegative_part(x)
-        mapped = 2 * torch.arctan(x_nonnegative / self.scale) / torch.pi
-        return _scale_from_unit_interval(mapped, out_min=out_min, out_max=out_max)
+        return _map_nonnegative_with_symmetric_helper(
+            x,
+            _arctan,
+            scale=self.scale,
+            out_min=out_min,
+            out_max=out_max,
+        )
 
 
 class _RealNamespace:
