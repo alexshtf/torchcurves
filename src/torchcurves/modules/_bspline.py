@@ -1,30 +1,52 @@
-from typing import Literal, Union
+from typing import Optional, Sequence, Union
 
 import torch
 import torch.nn as nn
 
 from ..functional import bspline_curves, uniform_augmented_knots
-from ..types import NormalizationFn
-from ._normalization import _normalization_catalogue
+from ..maps import resolve_input_map
+from ..types import InputMap, Numeric
+
+
+def _validate_parameter_range(parameter_range: Optional[Sequence[Numeric]]) -> tuple[float, float]:
+    if parameter_range is None:
+        return (-1.0, 1.0)
+
+    if len(parameter_range) != 2:
+        raise ValueError("parameter_range must be a sequence of length 2.")
+
+    parameter_min = float(parameter_range[0])
+    parameter_max = float(parameter_range[1])
+    if parameter_min >= parameter_max:
+        raise ValueError(f"parameter_range must satisfy min < max. Got ({parameter_min}, {parameter_max}).")
+
+    return (parameter_min, parameter_max)
 
 
 class BSplineBasis(nn.Module):
     r"""PyTorch module for a fixed B-spline basis.
 
-    This module stores the knot vector, spline degree, and input normalization,
-    but does not own coefficients. Callers provide coefficients at evaluation
-    time, which makes this module useful when another network predicts them.
+    This module stores the knot vector, spline degree, and input map, but does
+    not own coefficients. Callers provide coefficients at evaluation time,
+    which makes this module useful when another network predicts them.
 
     Args:
         degree: Degree of the B-spline (default: 3).
         knots_config:
             If an int, it specifies the number of control points per curve.
             A uniformly spaced augmented knot vector will be generated
-            automatically.
+            automatically over `parameter_range`.
             If a torch.Tensor, it explicitly specifies the knot values. The
             number of control points will be inferred. The tensor must be 1D.
-        normalize_fn: Normalization method for the module input. (default: "rational")
-        normalization_scale: Scale factor for normalization (default: 1.0).
+        parameter_range:
+            Interval used when generating a uniform augmented knot vector from
+            an integer `knots_config`. Defaults to `(-1, 1)`. Must not be set
+            when `knots_config` is a tensor.
+        input_map:
+            Map from raw inputs to the spline parameter interval. Can be a
+            dotted preset string like `"real.rational"` or `"nonneg.rational"`,
+            a map object from `torchcurves.maps`, or a callable with signature
+            `f(x, out_min, out_max)`.
 
     """
 
@@ -34,8 +56,8 @@ class BSplineBasis(nn.Module):
         self,
         degree: int = 3,
         knots_config: Union[int, torch.Tensor] = 10,
-        normalize_fn: Union[Literal["clamp", "rational", "arctan"], NormalizationFn] = "rational",
-        normalization_scale: float = 1.0,
+        parameter_range: Optional[Sequence[Numeric]] = None,
+        input_map: Union[str, InputMap] = "real.rational",
     ):
         super().__init__()
 
@@ -43,18 +65,7 @@ class BSplineBasis(nn.Module):
             raise ValueError("degree must be a non-negative integer.")
 
         self.degree = degree
-
-        if isinstance(normalize_fn, str):
-            normalize_fn_callable = _normalization_catalogue.get(normalize_fn)
-            if normalize_fn_callable is None:
-                raise ValueError(f"Unknown normalization {normalize_fn}")
-            self.normalize_fn = normalize_fn_callable
-        else:
-            self.normalize_fn = normalize_fn
-
-        self.normalization_scale = normalization_scale
-        if self.normalization_scale <= 0:
-            raise ValueError(f"Normalization scale must be positive, but {normalization_scale} was given.")
+        self.input_map = resolve_input_map(input_map)
 
         if isinstance(knots_config, int):
             n_control_points_per_curve = knots_config
@@ -63,11 +74,16 @@ class BSplineBasis(nn.Module):
                     f"Number of control points ({n_control_points_per_curve}) must be greater "
                     f"than the degree ({self.degree})."
                 )
+            parameter_min, parameter_max = _validate_parameter_range(parameter_range)
             knot_buffer = uniform_augmented_knots(
                 n_control_points_per_curve,
                 self.degree,
+                k_min=parameter_min,
+                k_max=parameter_max,
             )
         elif isinstance(knots_config, torch.Tensor):
+            if parameter_range is not None:
+                raise ValueError("parameter_range can only be set when knots_config is an int.")
             if knots_config.ndim != 1:
                 raise ValueError("Provided knots_config tensor must be 1D.")
             num_knots = knots_config.shape[0]
@@ -88,6 +104,7 @@ class BSplineBasis(nn.Module):
         # [knots[p], knots[C]], assuming a sorted knot vector.
         self._knot_min = self.knots[self.degree].item()
         self._knot_max = self.knots[self.n_control_points_per_curve].item()
+        self.parameter_range = (self._knot_min, self._knot_max)
 
     def __repr__(self):
         return (
@@ -98,12 +115,7 @@ class BSplineBasis(nn.Module):
         )
 
     def _prepare_arg(self, u: torch.Tensor) -> torch.Tensor:
-        return self.normalize_fn(
-            u,
-            self.normalization_scale,
-            out_min=self._knot_min,
-            out_max=self._knot_max,
-        )
+        return self.input_map(u, self._knot_min, self._knot_max)
 
     def forward(self, u: torch.Tensor, coefficients: torch.Tensor) -> torch.Tensor:
         """Evaluate caller-supplied coefficients in this B-spline basis.
@@ -149,8 +161,8 @@ class BSplineCurve(nn.Module):
     All curves share the same degree and knot configuration. Internally, this
     module stores the shared spline basis in a :class:`BSplineBasis` module.
 
-    The input of this layer normalized to the range :math:`[-1, 1]` (or the range of the knots if specified differently)
-    using the specified normalization strategy.
+    The input of this layer is mapped to the range :math:`[-1, 1]` (or the range of the knots if specified differently)
+    using the specified input map.
 
     Args:
         num_curves: Number of B-spline curves to define in this module (:math:`M`).
@@ -158,11 +170,18 @@ class BSplineCurve(nn.Module):
         degree: Degree of the B-spline (default: 3).
         knots_config:
             If an int, it specifies the number of control points per curve (:math:`C`).
-            A uniformly-spaced knot vector will be automatically generated in [-1, 1].
+            A uniformly-spaced knot vector will be automatically generated in `parameter_range`,
+            which defaults to [-1, 1].
             If a torch.Tensor, it explicitly specifies the knot values. The number
             of control points will be inferred. The tensor should be 1D.
-        normalize_fn: Normalization method layer's input. (default: "rational")
-        normalization_scale: Scale factor for normalization (default: 1.0).
+        parameter_range:
+            Interval used when `knots_config` is an int. Must not be set when
+            `knots_config` is a tensor.
+        input_map:
+            Map from raw inputs to the spline parameter interval. Can be a
+            dotted preset string like `"real.rational"` or `"nonneg.rational"`,
+            a map object from `torchcurves.maps`, or a callable with signature
+            `f(x, out_min, out_max)`.
 
     """
 
@@ -172,8 +191,8 @@ class BSplineCurve(nn.Module):
         dim: int,
         degree: int = 3,
         knots_config: Union[int, torch.Tensor] = 10,  # This is n_control_points_per_curve
-        normalize_fn: Union[Literal["clamp", "rational", "arctan"], NormalizationFn] = "rational",
-        normalization_scale: float = 1.0,
+        parameter_range: Optional[Sequence[Numeric]] = None,
+        input_map: Union[str, InputMap] = "real.rational",
     ):
         super().__init__()
 
@@ -187,8 +206,8 @@ class BSplineCurve(nn.Module):
         self.basis = BSplineBasis(
             degree=degree,
             knots_config=knots_config,
-            normalize_fn=normalize_fn,
-            normalization_scale=normalization_scale,
+            parameter_range=parameter_range,
+            input_map=input_map,
         )
 
         # Control points shape: (m, c, d)
@@ -219,12 +238,12 @@ class BSplineCurve(nn.Module):
         return self.basis.knots
 
     @property
-    def normalize_fn(self) -> NormalizationFn:
-        return self.basis.normalize_fn
+    def parameter_range(self) -> tuple[float, float]:
+        return self.basis.parameter_range
 
     @property
-    def normalization_scale(self) -> float:
-        return self.basis.normalization_scale
+    def input_map(self) -> InputMap:
+        return self.basis.input_map
 
     @property
     def n_control_points_per_curve(self) -> int:

@@ -108,7 +108,6 @@ and use it as the coefficient vector for a B-spline curve.
 import torch
 from torch import nn
 import torchcurves as tc
-import torchcurves.functional as tcf
 
 
 class AuctionWinModel(nn.Module):
@@ -120,13 +119,8 @@ class AuctionWinModel(nn.Module):
         )
         self.bid_basis = tc.BSplineBasis(
             degree=3,
-            knots_config=tcf.uniform_augmented_knots(
-                n_control_points=num_bid_coefficients,
-                degree=3,
-                k_min=0,
-                k_max=1,
-            ),
-            normalize_fn="arctan",
+            knots_config=num_bid_coefficients,
+            input_map=tc.maps.Nonneg.rational(),
         )
 
     def forward(self, auction_features, bids):
@@ -221,14 +215,38 @@ here for clarity.
 
 ## Advanced features
 
-The curves we provide here typically rely on their inputs to lie in a compact
-interval, typically [-1, 1]. Arbitrary inputs need to be normalized to this
-interval. We provide two simple out-of-the-box normalization strategies
-described below.
+The curves in this library evaluate on compact parameter intervals.
+`input_map` is responsible for mapping raw inputs to that interval.
 
-### Rational scaling
+- `LegendreCurve` always maps to `[-1, 1]`.
+- `BSplineBasis` and `BSplineCurve` map to their effective knot interval.
+- When `BSplineBasis` or `BSplineCurve` receives `knots_config` as an int, use
+  `parameter_range=(a, b)` to choose that interval explicitly.
 
-This is the default strategy — this strategy computes
+### Dotted preset strings
+
+Use dotted preset strings for the default built-in input maps:
+
+```python
+tc.BSplineCurve(num_curves, curve_dim, input_map="real.rational")
+tc.BSplineCurve(num_curves, curve_dim, input_map="real.arctan")
+tc.BSplineCurve(num_curves, curve_dim, input_map="real.clamp")
+tc.BSplineBasis(knots_config=num_control_points, parameter_range=(0, 1), input_map="nonneg.rational")
+tc.BSplineBasis(knots_config=num_control_points, parameter_range=(0, 1), input_map="nonneg.arctan")
+```
+
+### Configured map objects
+
+Use `tc.maps` objects when you want a non-default scale:
+
+```python
+tc.BSplineCurve(num_curves, curve_dim, input_map=tc.maps.Real.rational(scale=s))
+tc.BSplineCurve(num_curves, curve_dim, input_map=tc.maps.Real.arctan(scale=s))
+tc.BSplineCurve(num_curves, curve_dim, input_map=tc.maps.Real.clamp(scale=s))
+tc.BSplineBasis(knots_config=num_control_points, parameter_range=(0, 1), input_map=tc.maps.Nonneg.arctan(scale=s))
+```
+
+The default rational map computes
 
 ```math
 x \to \frac{x}{\sqrt{s^2 + x^2}},
@@ -237,53 +255,32 @@ x \to \frac{x}{\sqrt{s^2 + x^2}},
 and is based on the paper
 >Wang, Z.Q. and Guo, B.Y., 2004. Modified Legendre rational spectral method for the whole line. Journal of Computational Mathematics, pp.457-474.
 
-In Python it looks like this:
-
-```python
-tc.BSplineCurve(num_curves, curve_dim, normalize_fn='rational', normalization_scale=s)
-```
-
-### Arctan scaling
-
-This strategy computes
+The arctan map computes
 
 ```math
-x \to \frac{2}{\pi} \arctan(x / s).
+x \to \frac{2}{\pi} \arctan(x / s),
 ```
 
-This kind of scaling function, up to constants, is the CDF of the Cauchy distribution. It is useful when our inputs
-are assumed to be heavy tailed.
+The `nonneg.arctan` map uses the same formula after clamping the input below at `0`,
+so `0` maps to the left boundary and large values approach the right boundary.
 
-In Python it looks like this:
-```python
-tc.BSplineCurve(num_curves, curve_dim, normalize_fn='arctan', normalization_scale=s)
-```
+The clamp map clips `x / s` to the designated interval.
 
-### Clamping
+### Custom input maps
 
-The inputs are simply clipped to [-1, 1] after scaling, i.e.
-
-```math
-x \to \max(\min(1, x / s), -1)
-```
-
-In Python it looks like this:
+Provide a callable with signature `f(x, out_min, out_max)`. Example:
 
 ```python
-tc.BSplineCurve(num_curves, curve_dim, normalize_fn='clamp', normalization_scale=s)
-```
+import torch
 
-### Custom normalization
+def erf_map(scale: float = 1.0):
+    def input_map(x, out_min: float = -1, out_max: float = 1) -> torch.Tensor:
+        mapped = torch.special.erf(x / scale)
+        return ((mapped + 1) * (out_max - out_min)) / 2 + out_min
 
-Provide a custom function that maps its input to the designated range after
-scaling. Example:
+    return input_map
 
-```python
-def erf_clamp(x: Tensor, scale: float = 1, out_min: float = -1, out_max: float = 1) -> torch.Tensor:
-    mapped = torch.special.erf(x / scale)
-    return ((mapped + 1) * (out_max - out_min)) / 2 + out_min
-
-tc.BSplineCurve(num_curves, curve_dim, normalize_fn=erf_clamp, normalization_scale=s)
+tc.BSplineCurve(num_curves, curve_dim, input_map=erf_map(scale=s))
 ```
 
 ### Gradient checkpointing for Legendre curves
@@ -313,7 +310,7 @@ input_dim = 2
 intermediate_dim = 5
 num_control_points = 10
 
-config = dict(knots_config=num_control_points, normalize_fn='clamp')
+config = dict(knots_config=num_control_points, input_map="real.clamp")
 spline_kan = nn.Sequential(
     # layer 1
     tc.BSplineCurve(input_dim, intermediate_dim, **config),
@@ -337,7 +334,7 @@ input_dim = 2
 intermediate_dim = 5
 degree = 5
 
-config = dict(degree=degree, normalize_fn="clamp")
+config = dict(degree=degree, input_map="real.clamp")
 kan = nn.Sequential(
     # layer 1
     tc.LegendreCurve(input_dim, intermediate_dim, **config),

@@ -5,6 +5,7 @@ TorchCurves documentation
    :maxdepth: 1
 
    torchcurves
+   torchcurves.maps
    torchcurves.functional
 
 .. toctree::

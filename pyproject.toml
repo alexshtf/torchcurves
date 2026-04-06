@@ -55,6 +55,7 @@ dev = [
     "pre-commit>=3.0.0",
     "pytest-benchmark>=5.2.0",
     "scipy>=1.13.1",
+    "jupyter==1.0.0",
 ]
 doc = [
     "sphinx>=7.4.7",
