@@ -184,6 +184,12 @@ def test_multiple_curves_multiple_samples_matches_nested_single_single_concatena
             torch.tensor([[-0.75], [0.15]], dtype=DTYPE),
         ),
         (
+            1,
+            4,
+            4,
+            torch.tensor([[-0.75], [0.15]], dtype=DTYPE),
+        ),
+        (
             2,
             5,
             2,
@@ -196,7 +202,7 @@ def test_multiple_curves_multiple_samples_matches_nested_single_single_concatena
             ),
         ),
     ],
-    ids=["degree-1-single-curve", "degree-2-two-curves"],
+    ids=["degree-1-single-curve", "degree-1-high-dim", "degree-2-two-curves"],
 )
 def test_bspline_gradcheck_interior_inputs(
     degree: int,

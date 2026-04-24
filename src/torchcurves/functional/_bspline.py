@@ -74,6 +74,10 @@ class _BSplineFunction(torch.autograd.Function):
         return flat_control_points[flat_indices]
 
     @staticmethod
+    def _basis_control_matmul(basis: torch.Tensor, gathered_control_points: torch.Tensor) -> torch.Tensor:
+        return torch.matmul(basis.unsqueeze(-2), gathered_control_points).squeeze(-2)
+
+    @staticmethod
     def find_spans(u: torch.Tensor, knots: torch.Tensor, degree: int, n_control_points: int) -> torch.Tensor:
         """Find the knot span index for each parameter value.
 
@@ -161,7 +165,7 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         gathered_control_points = _BSplineFunction._gather_control_points(control_points, cp_indices)
-        return torch.matmul(basis.unsqueeze(-2), gathered_control_points).squeeze(-2)
+        return _BSplineFunction._basis_control_matmul(basis, gathered_control_points)
 
     @staticmethod
     def basis_derivative_coefficients(
@@ -235,6 +239,19 @@ class _BSplineFunction(torch.autograd.Function):
         return grad_control_points
 
     @staticmethod
+    def _accumulate_input_grads(
+        grad_output: torch.Tensor,
+        basis_deriv: torch.Tensor,
+        gathered_control_points: torch.Tensor,
+    ) -> torch.Tensor:
+        if grad_output.shape[-1] > basis_deriv.shape[-1]:
+            projected_grad = torch.matmul(gathered_control_points, grad_output.unsqueeze(-1)).squeeze(-1)
+            return (basis_deriv * projected_grad).sum(dim=-1)
+
+        d_points_du = _BSplineFunction._basis_control_matmul(basis_deriv, gathered_control_points)
+        return (grad_output * d_points_du).sum(dim=-1)
+
+    @staticmethod
     def forward(
         ctx,
         u: torch.Tensor,
@@ -287,8 +304,7 @@ class _BSplineFunction(torch.autograd.Function):
             knots = next(saved_iter)
             basis_deriv = _BSplineFunction.compute_basis_derivatives(u, knots, spans, degree)
             gathered_control_points = _BSplineFunction._gather_control_points(control_points, cp_indices)
-            d_points_du = torch.einsum("nmi,nmid->nmd", basis_deriv, gathered_control_points)
-            grad_u = (grad_output * d_points_du).sum(dim=-1)
+            grad_u = _BSplineFunction._accumulate_input_grads(grad_output, basis_deriv, gathered_control_points)
 
         grad_control_points = None
         if need_grad_cp:
