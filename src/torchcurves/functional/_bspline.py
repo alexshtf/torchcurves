@@ -161,7 +161,7 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         gathered_control_points = _BSplineFunction._gather_control_points(control_points, cp_indices)
-        return torch.einsum("nmw,nmwd->nmd", basis, gathered_control_points)
+        return torch.matmul(basis.unsqueeze(-2), gathered_control_points).squeeze(-2)
 
     @staticmethod
     def basis_derivative_coefficients(
