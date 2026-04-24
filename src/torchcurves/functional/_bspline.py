@@ -62,19 +62,20 @@ class _BSplineFunction(torch.autograd.Function):
         return spans.unsqueeze(-1) + offsets
 
     @staticmethod
-    def _curve_indices(num_samples: int, num_curves: int, width: int, device: torch.device) -> torch.Tensor:
-        return torch.arange(num_curves, device=device).view(1, -1, 1).expand(num_samples, -1, width)
+    def _flat_control_point_indices(cp_indices: torch.Tensor, n_control_points: int) -> torch.Tensor:
+        num_curves = cp_indices.shape[1]
+        curve_offsets = torch.arange(num_curves, device=cp_indices.device).view(1, -1, 1) * n_control_points
+        return cp_indices + curve_offsets
 
     @staticmethod
     def _gather_control_points(control_points: torch.Tensor, cp_indices: torch.Tensor) -> torch.Tensor:
-        num_samples, num_curves, width = cp_indices.shape
-        curve_indices = _BSplineFunction._curve_indices(
-            num_samples=num_samples,
-            num_curves=num_curves,
-            width=width,
-            device=control_points.device,
-        )
-        return control_points[curve_indices, cp_indices, :]
+        flat_indices = _BSplineFunction._flat_control_point_indices(cp_indices, control_points.shape[1])
+        flat_control_points = control_points.reshape(-1, control_points.shape[-1])
+        return flat_control_points[flat_indices]
+
+    @staticmethod
+    def _basis_control_matmul(basis: torch.Tensor, gathered_control_points: torch.Tensor) -> torch.Tensor:
+        return torch.matmul(basis.unsqueeze(-2), gathered_control_points).squeeze(-2)
 
     @staticmethod
     def find_spans(u: torch.Tensor, knots: torch.Tensor, degree: int, n_control_points: int) -> torch.Tensor:
@@ -117,9 +118,10 @@ class _BSplineFunction(torch.autograd.Function):
         basis = torch.zeros(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
         left = torch.empty(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
         right = torch.empty(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
+        ratios = torch.empty_like(u)
+        saved = torch.empty_like(u)
 
         basis[..., 0].fill_(1)
-        zero = torch.zeros((), device=u.device, dtype=u.dtype)
 
         for p_iter in range(1, degree + 1):
             left_idx = spans + 1 - p_iter
@@ -127,18 +129,19 @@ class _BSplineFunction(torch.autograd.Function):
             left[..., p_iter] = u - knots[left_idx]
             right[..., p_iter] = knots[right_idx] - u
 
-            saved = zero
+            saved.zero_()
             for r_iter in range(p_iter):
                 denominator = right[..., r_iter + 1] + left[..., p_iter - r_iter]
-                ratios = basis[..., r_iter] / denominator
+                torch.div(basis[..., r_iter], denominator, out=ratios)
                 ratios.nan_to_num_(0, 0, 0)
 
-                basis[..., r_iter] = torch.addcmul(
+                torch.addcmul(
                     saved,
                     right[..., r_iter + 1],
                     ratios,
+                    out=basis[..., r_iter],
                 )
-                saved = left[..., p_iter - r_iter] * ratios
+                torch.mul(left[..., p_iter - r_iter], ratios, out=saved)
 
             basis[..., p_iter] = saved
 
@@ -162,7 +165,7 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         gathered_control_points = _BSplineFunction._gather_control_points(control_points, cp_indices)
-        return (basis.unsqueeze(-1) * gathered_control_points).sum(dim=2)
+        return _BSplineFunction._basis_control_matmul(basis, gathered_control_points)
 
     @staticmethod
     def basis_derivative_coefficients(
@@ -221,19 +224,32 @@ class _BSplineFunction(torch.autograd.Function):
         cp_indices: torch.Tensor,
         control_points_shape: tuple[int, int, int],
     ) -> torch.Tensor:
-        num_curves = grad_output.shape[1]
         grad_control_points = torch.zeros(
             control_points_shape,
             device=grad_output.device,
             dtype=grad_output.dtype,
         )
 
-        updates = grad_output.unsqueeze(2) * basis.unsqueeze(3)
-        updates_flat = updates.permute(1, 0, 2, 3).reshape(num_curves, -1, grad_output.shape[-1])
-        indices_flat = cp_indices.permute(1, 0, 2).reshape(num_curves, -1)
-        indices_expanded = indices_flat.unsqueeze(-1).expand_as(updates_flat)
-        grad_control_points.scatter_add_(1, indices_expanded, updates_flat)
+        flat_indices = _BSplineFunction._flat_control_point_indices(
+            cp_indices,
+            n_control_points=control_points_shape[1],
+        ).reshape(-1)
+        updates = (grad_output.unsqueeze(2) * basis.unsqueeze(3)).reshape(-1, grad_output.shape[-1])
+        grad_control_points.reshape(-1, grad_output.shape[-1]).index_add_(0, flat_indices, updates)
         return grad_control_points
+
+    @staticmethod
+    def _accumulate_input_grads(
+        grad_output: torch.Tensor,
+        basis_deriv: torch.Tensor,
+        gathered_control_points: torch.Tensor,
+    ) -> torch.Tensor:
+        if grad_output.shape[-1] > basis_deriv.shape[-1]:
+            projected_grad = torch.matmul(gathered_control_points, grad_output.unsqueeze(-1)).squeeze(-1)
+            return (basis_deriv * projected_grad).sum(dim=-1)
+
+        d_points_du = _BSplineFunction._basis_control_matmul(basis_deriv, gathered_control_points)
+        return (grad_output * d_points_du).sum(dim=-1)
 
     @staticmethod
     def forward(
@@ -288,8 +304,7 @@ class _BSplineFunction(torch.autograd.Function):
             knots = next(saved_iter)
             basis_deriv = _BSplineFunction.compute_basis_derivatives(u, knots, spans, degree)
             gathered_control_points = _BSplineFunction._gather_control_points(control_points, cp_indices)
-            d_points_du = torch.einsum("nmi,nmid->nmd", basis_deriv, gathered_control_points)
-            grad_u = (grad_output * d_points_du).sum(dim=-1)
+            grad_u = _BSplineFunction._accumulate_input_grads(grad_output, basis_deriv, gathered_control_points)
 
         grad_control_points = None
         if need_grad_cp:
