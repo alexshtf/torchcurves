@@ -9,8 +9,8 @@ Low-level helpers for mapping inputs to bounded intervals. Most users should
 prefer ``input_map`` and ``torchcurves.maps`` on the module API.
 
 .. autosummary::
-    :toctree: generated
-    :nosignatures:
+   :toctree: generated
+   :nosignatures:
 
    clamp
    rational

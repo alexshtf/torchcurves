@@ -41,8 +41,7 @@ jobs:
         run: |
           sudo apt-get -qq update
           sudo apt-get install -y pandoc
-          cd doc
-          make html
+          make doc
 
       - name: Archive documentation
         uses: actions/upload-artifact@v4

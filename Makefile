@@ -8,7 +8,8 @@ test:
 	uv run pytest tests
 
 doc:
-	uv run sphinx-build -b html docs docs/_build
+	rm -rf doc/source/generated
+	uv run sphinx-build -W -b html doc/source doc/build/html
 
 bmark:
 	uv run pytest benchmarks --benchmark-sort=fullname
