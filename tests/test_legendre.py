@@ -1,4 +1,5 @@
 import re
+from typing import Optional
 
 import numpy as np
 import pytest
@@ -215,7 +216,7 @@ def test_legendre_checkpointing_preserves_values_and_gradients(
     coefficient_values = torch.randn(degree + 1, num_curves, dim, dtype=DTYPE, generator=generator)
     output_weight = torch.randn(3, num_curves, dim, dtype=DTYPE, generator=generator)
 
-    def evaluate(segments: int | None) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+    def evaluate(segments: Optional[int]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         x = x_values.clone().requires_grad_()
         coefficients = coefficient_values.clone().requires_grad_()
         output = legendre_curves(x, coefficients, checkpoint_segments=segments)
