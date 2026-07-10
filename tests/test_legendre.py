@@ -1,10 +1,12 @@
 import re
+from typing import Optional
 
 import numpy as np
 import pytest
 import torch
 
 import torchcurves as tc
+import torchcurves.functional._legendre as legendre_impl
 from torchcurves import LegendreCurve
 from torchcurves.functional import arctan, clamp, legendre_curves, rational
 
@@ -192,6 +194,66 @@ def test_legendre_curve_supports_plain_callable_input_map() -> None:
 
     actual = model(u)
     expected = legendre_curves(_tanh_map(u, -1.0, 1.0), model.coefficients)
+
+    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+
+
+@pytest.mark.parametrize(
+    ("checkpoint_segments", "expected_checkpoint_calls"),
+    [(3, 3), (13, 10)],
+    ids=["uneven-segments", "more-segments-than-degree"],
+)
+def test_legendre_checkpointing_preserves_values_and_gradients(
+    checkpoint_segments: int,
+    expected_checkpoint_calls: int,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    degree = 9
+    num_curves = 2
+    dim = 3
+    generator = torch.Generator().manual_seed(1)
+    x_values = 1.8 * torch.rand(3, num_curves, dtype=DTYPE, generator=generator) - 0.9
+    coefficient_values = torch.randn(degree + 1, num_curves, dim, dtype=DTYPE, generator=generator)
+    output_weight = torch.randn(3, num_curves, dim, dtype=DTYPE, generator=generator)
+
+    def evaluate(segments: Optional[int]) -> tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        x = x_values.clone().requires_grad_()
+        coefficients = coefficient_values.clone().requires_grad_()
+        output = legendre_curves(x, coefficients, checkpoint_segments=segments)
+        (output * output_weight).sum().backward()
+        assert x.grad is not None
+        assert coefficients.grad is not None
+        return output.detach(), x.grad, coefficients.grad
+
+    expected = evaluate(segments=None)
+
+    checkpoint_calls = 0
+    original_checkpoint = legendre_impl._checkpoint
+
+    def counting_checkpoint(fn, *args):
+        nonlocal checkpoint_calls
+        checkpoint_calls += 1
+        return original_checkpoint(fn, *args)
+
+    monkeypatch.setattr(legendre_impl, "_checkpoint", counting_checkpoint)
+    actual = evaluate(segments=checkpoint_segments)
+
+    assert checkpoint_calls == expected_checkpoint_calls
+    for actual_tensor, expected_tensor in zip(actual, expected):
+        torch.testing.assert_close(actual_tensor, expected_tensor, rtol=1e-12, atol=1e-12)
+
+
+def test_legendre_checkpointing_is_skipped_when_gradients_are_disabled(monkeypatch: pytest.MonkeyPatch) -> None:
+    x = torch.tensor([[-0.8, 0.3], [0.1, 0.9]], dtype=DTYPE, requires_grad=True)
+    coefficients = _seeded_coefficients(num_curves=2, degree=4, dim=3).requires_grad_()
+
+    def fail_if_called(*_args, **_kwargs):
+        pytest.fail("Checkpointing must be skipped when gradients are disabled.")
+
+    monkeypatch.setattr(legendre_impl, "_checkpoint", fail_if_called)
+    with torch.no_grad():
+        expected = legendre_curves(x, coefficients)
+        actual = legendre_curves(x, coefficients, checkpoint_segments=3)
 
     torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
 
