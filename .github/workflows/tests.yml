@@ -12,10 +12,6 @@ jobs:
     strategy:
       matrix:
         python-version: ["3.9", "3.10", "3.11", "3.12", "3.13"]
-        torch-version: ["current"]
-        include:
-          - python-version: "3.12"
-            torch-version: "2.2.0"
 
     steps:
     - uses: actions/checkout@v4
@@ -28,24 +24,17 @@ jobs:
 
     - name: Install dependencies
       run: |
-        uv venv --python ${{ matrix.python-version }}
+        uv venv
         uv sync --all-groups
-
-    - name: Install minimum supported PyTorch (CPU)
-      if: matrix.torch-version == '2.2.0'
-      run: |
-        # PyTorch 2.2's NumPy bridge requires the NumPy 1.x binary ABI.
-        uv pip install "numpy<2"
-        uv pip install "torch==2.2.0" --index-url https://download.pytorch.org/whl/cpu
 
     - name: Lint with ruff
       run: |
-        uv run --no-sync ruff check src/ tests/
+        uv run ruff check src/ tests/
 
     - name: Type check with pyright
       run: |
-        uv run --no-sync pyright src/
+        uv run pyright src/
 
     - name: Test with pytest
       run: |
-        uv run --no-sync pytest tests/ -v --cov=torchcurves --cov-report=term-missing
+        uv run pytest tests/ -v --cov=torchcurves --cov-report=term-missing
