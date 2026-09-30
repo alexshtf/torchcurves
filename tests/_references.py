@@ -1,4 +1,4 @@
-from __future__ import annotations
+from typing import Optional
 
 import numpy as np
 import torch
@@ -26,7 +26,7 @@ def assert_reference(actual, expected, precision, *, device="cpu", scale=None):
 def legendre_reference(
     x: torch.Tensor,
     coefficients: torch.Tensor,
-    upstream: torch.Tensor | None = None,
+    upstream: Optional[torch.Tensor] = None,
 ) -> tuple[np.ndarray, list[tuple[np.ndarray, np.ndarray]]]:
     """NumPy values and optional (VJP, absolute contraction scale) for each input."""
     args, coeffs = numpy64(x), numpy64(coefficients)
@@ -55,8 +55,8 @@ def bspline_reference(
     coefficients: torch.Tensor,
     knots: torch.Tensor,
     degree: int,
-    upstream: torch.Tensor | None = None,
-) -> tuple[np.ndarray, np.ndarray | None, np.ndarray | None]:
+    upstream: Optional[torch.Tensor] = None,
+) -> tuple[np.ndarray, Optional[np.ndarray], Optional[np.ndarray]]:
     """Evaluate SciPy values and analytical vector-Jacobian products in FP64."""
     args, coeffs, knot_values = numpy64(u), numpy64(coefficients), numpy64(knots)
     spline = BSpline(knot_values, np.eye(coeffs.shape[1]), degree, extrapolate=False)
