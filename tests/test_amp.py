@@ -1,4 +1,4 @@
-"""Autocast regression cases with backward outside the autocast context."""
+"""Test autocast values, gradients, and dtype behavior across supported execution modes."""
 
 import pytest
 import torch
