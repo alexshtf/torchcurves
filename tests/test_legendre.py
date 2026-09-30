@@ -10,6 +10,8 @@ import torchcurves.functional._legendre as legendre_impl
 from torchcurves import LegendreCurve
 from torchcurves.functional import arctan, clamp, legendre_curves, rational
 
+from ._references import assert_reference, legendre_reference, numpy64
+
 DTYPE = torch.float64
 
 
@@ -18,17 +20,47 @@ def _seeded_coefficients(num_curves: int, degree: int, dim: int) -> torch.Tensor
     return torch.randn(degree + 1, num_curves, dim, dtype=DTYPE, generator=generator)
 
 
-def _torch_single_curve_single_sample(x_value: float, coefficients_single: torch.Tensor) -> torch.Tensor:
-    x_single = torch.tensor([[x_value]], dtype=DTYPE)  # (batch=1, curves=1)
-    return legendre_curves(x_single, coefficients_single)  # (1, 1, dim)
+@pytest.mark.parametrize(
+    ("degree", "dim", "gradient_mode", "checkpoint_segments"),
+    [
+        pytest.param(0, 1, "both", None, id="constant-both"),
+        pytest.param(3, 2, "arguments", None, id="cubic-arguments"),
+        pytest.param(5, 3, "coefficients", None, id="quintic-coefficients"),
+        pytest.param(5, 3, "both", None, id="quintic-both"),
+        pytest.param(5, 3, "both", 3, id="quintic-checkpoint"),
+    ],
+)
+def test_legendre_values_and_gradients_match_numpy(
+    degree: int,
+    dim: int,
+    gradient_mode: str,
+    checkpoint_segments: Optional[int],
+    precision: tuple[torch.dtype, float, float],
+) -> None:
+    dtype, _, _ = precision
+    x = torch.tensor([[-1.0, -0.7], [-0.35, 0.0], [0.2, 0.65], [0.9, 1.0]], dtype=DTYPE).to(dtype)
+    coefficients = (0.25 * _seeded_coefficients(2, degree, dim)).to(dtype)
+    x.requires_grad_(gradient_mode != "coefficients")
+    coefficients.requires_grad_(gradient_mode != "arguments")
+    generator = torch.Generator().manual_seed(11)
+    upstream = torch.randn(4, 2, dim, dtype=DTYPE, generator=generator).to(dtype)
+
+    output = legendre_curves(x, coefficients, checkpoint_segments=checkpoint_segments)
+    output.backward(upstream)
+    expected, gradients = legendre_reference(x, coefficients, upstream)
+    assert_reference(output, expected, precision)
+    for leaf, (reference, scale) in zip((x, coefficients), gradients):
+        if not leaf.requires_grad:
+            assert leaf.grad is None
+            continue
+        assert leaf.grad is not None
+        assert_reference(leaf.grad, reference, precision, scale=scale)
 
 
-def _numpy_single_curve_single_sample(x_value: float, coefficients_single: torch.Tensor) -> torch.Tensor:
-    coeff_np = coefficients_single[:, 0, :].detach().cpu().numpy()  # (degree+1, dim)
-    values = [
-        float(np.polynomial.legendre.legval(x_value, coeff_np[:, dim_index])) for dim_index in range(coeff_np.shape[1])
-    ]
-    return torch.tensor(values, dtype=coefficients_single.dtype).view(1, 1, -1)
+def test_legendre_gradcheck_fp64() -> None:
+    x = torch.tensor([[-0.7, 0.2], [0.0, 0.6]], dtype=DTYPE, requires_grad=True)
+    coefficients = (0.25 * _seeded_coefficients(2, 3, 2)).requires_grad_()
+    assert torch.autograd.gradcheck(legendre_curves, (x, coefficients))
 
 
 def _tanh_map(x: torch.Tensor, out_min: float, out_max: float) -> torch.Tensor:
@@ -47,77 +79,22 @@ def _tanh_map(x: torch.Tensor, out_min: float, out_max: float) -> torch.Tensor:
 )
 def test_single_curve_single_sample_matches_numpy(degree: int, dim: int, x_value: float) -> None:
     coefficients_single = _seeded_coefficients(1, degree, dim)
-    actual = _torch_single_curve_single_sample(x_value, coefficients_single)
-    expected = _numpy_single_curve_single_sample(x_value, coefficients_single)
-    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+    x = torch.tensor([[x_value]], dtype=DTYPE)
+    actual = legendre_curves(x, coefficients_single)
+    expected, _ = legendre_reference(x, coefficients_single)
+    torch.testing.assert_close(actual, torch.from_numpy(expected), rtol=1e-12, atol=1e-12)
 
 
-def test_multiple_curves_one_sample_is_concat_over_curve_dimension() -> None:
-    degree = 5
-    dim = 2
-    num_curves = 3
-
-    coefficients = _seeded_coefficients(num_curves, degree, dim)
-    x = torch.tensor([[-0.7, 0.1, 0.9]], dtype=DTYPE)  # (batch=1, curves=3)
-
-    batched = legendre_curves(x, coefficients)  # (1, 3, dim)
-
-    per_curve = []
-    for curve_index in range(num_curves):
-        x_single = x[:, curve_index : curve_index + 1]  # (1, 1)
-        coeff_single = coefficients[:, curve_index : curve_index + 1, :]  # (degree+1, 1, dim)
-        per_curve.append(legendre_curves(x_single, coeff_single))  # each (1, 1, dim)
-
-    expected = torch.cat(per_curve, dim=1)  # concat curves -> (1, 3, dim)
-    torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
-
-
-def test_one_curve_multiple_samples_is_concat_over_batch_dimension() -> None:
-    degree = 6
-    dim = 2
-
-    coefficients_single = _seeded_coefficients(1, degree, dim)
-    x = torch.tensor([[-0.9], [-0.4], [0.2], [0.85]], dtype=DTYPE)  # (batch=4, curves=1)
-
-    batched = legendre_curves(x, coefficients_single)  # (4, 1, dim)
-
-    per_sample = []
-    for sample_index in range(x.shape[0]):
-        x_single = x[sample_index : sample_index + 1, :]  # (1, 1)
-        per_sample.append(legendre_curves(x_single, coefficients_single))  # each (1, 1, dim)
-
-    expected = torch.cat(per_sample, dim=0)  # concat batch -> (4, 1, dim)
-    torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
-
-
-def test_multiple_curves_multiple_samples_matches_nested_single_single_concatenation() -> None:
-    degree = 4
-    dim = 3
-    num_curves = 2
-
-    coefficients = _seeded_coefficients(num_curves, degree, dim)
-    x = torch.tensor(
-        [
-            [-0.8, 0.3],
-            [-0.1, 0.7],
-            [0.5, 0.95],
-        ],
-        dtype=DTYPE,
-    )  # (batch=3, curves=2)
-
-    batched = legendre_curves(x, coefficients)  # (3, 2, dim)
-
-    rows = []
-    for sample_index in range(x.shape[0]):
-        row_curves = []
-        for curve_index in range(num_curves):
-            x_single = x[sample_index : sample_index + 1, curve_index : curve_index + 1]  # (1, 1)
-            coeff_single = coefficients[:, curve_index : curve_index + 1, :]  # (degree+1, 1, dim)
-            row_curves.append(legendre_curves(x_single, coeff_single))  # (1, 1, dim)
-        rows.append(torch.cat(row_curves, dim=1))  # (1, curves, dim)
-
-    expected = torch.cat(rows, dim=0)  # (batch, curves, dim)
-    torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
+@pytest.mark.parametrize(("batch", "curves", "degree", "dim"), [(1, 3, 5, 2), (4, 1, 6, 2), (3, 2, 4, 3)])
+def test_batching_matches_individual_evaluations(batch, curves, degree, dim) -> None:
+    coefficients = _seeded_coefficients(curves, degree, dim)
+    x = torch.linspace(-0.9, 0.95, batch * curves, dtype=DTYPE).reshape(batch, curves)
+    actual = legendre_curves(x, coefficients)
+    assert actual.shape == (batch, curves, dim)
+    for b in range(batch):
+        for m in range(curves):
+            expected = legendre_curves(x[b : b + 1, m : m + 1], coefficients[:, m : m + 1])
+            torch.testing.assert_close(actual[b : b + 1, m : m + 1], expected, rtol=1e-12, atol=1e-12)
 
 
 def test_legendre_module_accepts_batched_curve_inputs() -> None:
@@ -180,6 +157,25 @@ def test_legendre_curve_with_object_input_map_matches_manual_functional_path() -
 
     torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
     assert model.input_map is input_map
+
+
+def test_legendre_curve_input_map_matches_independent_rational_reference() -> None:
+    scale = 0.75
+    model = LegendreCurve(num_curves=2, dim=2, degree=3, input_map=tc.maps.Real.rational(scale=scale)).double()
+    with torch.no_grad():
+        model.coefficients.copy_(0.25 * _seeded_coefficients(2, 3, 2))
+    u = torch.tensor([[-3.0, -0.4], [0.5, 2.0]], dtype=DTYPE)
+
+    actual = model(u)
+    u64 = numpy64(u)
+    mapped = u64 / np.sqrt(scale**2 + u64**2)
+    expected, _ = legendre_reference(torch.from_numpy(mapped), model.coefficients)
+
+    assert actual.shape == (2, 2, 2)
+    assert actual.dtype == DTYPE
+    assert actual.device == u.device
+    assert torch.isfinite(actual).all()
+    np.testing.assert_allclose(numpy64(actual), expected, rtol=1e-12, atol=1e-12)
 
 
 def test_legendre_curve_supports_plain_callable_input_map() -> None:

@@ -67,6 +67,10 @@ class LegendreCurve(nn.Module):
 
         # Coefficients shape: (M, C, D)
         self.coefficients = nn.Parameter(torch.empty(self.n_coefficients, self.num_curves, self.dim))
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        """Initialize this module's coefficients in place using Xavier uniform initialization."""
         nn.init.xavier_uniform_(self.coefficients)
 
     def forward(self, u: torch.Tensor) -> torch.Tensor:

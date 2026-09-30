@@ -1,18 +1,24 @@
 import re
 
+import numpy as np
 import pytest
 import torch
-from scipy.interpolate import BSpline as SciPyBSpline
 from torch.autograd import gradcheck
 
 import torchcurves as tc
 from torchcurves import BSplineBasis, BSplineCurve
-from torchcurves.functional import arctan, bspline_curves, uniform_augmented_knots
+from torchcurves.functional import bspline_curves, uniform_augmented_knots
+
+from ._references import assert_reference, bspline_reference, numpy64
 
 DTYPE = torch.float64
 GRADCHECK_EPS = 1e-6
 GRADCHECK_ATOL = 1e-4
 GRADCHECK_RTOL = 1e-3
+DEVICES = [
+    "cpu",
+    pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")),
+]
 
 
 def _seeded_control_points(num_curves: int, n_control_points: int, dim: int) -> torch.Tensor:
@@ -24,38 +30,6 @@ def _nonuniform_knots(degree: int, dtype: torch.dtype) -> torch.Tensor:
     # Full multiplicity at -0.2 exercises discontinuous splines for positive degrees.
     internal_knots = [-0.6] + [-0.2] * (degree + 1) + [0.45]
     return torch.tensor([-1.0] * (degree + 1) + internal_knots + [1.0] * (degree + 1), dtype=dtype)
-
-
-def _torch_single_curve_single_sample(
-    u_value: float,
-    control_points_single: torch.Tensor,
-    knots: torch.Tensor,
-    degree: int,
-) -> torch.Tensor:
-    u_single = torch.tensor([[u_value]], dtype=DTYPE)  # (batch=1, curves=1)
-    return bspline_curves(u_single, control_points_single, knots, degree)  # (1, 1, dim)
-
-
-def _scipy_single_curve_single_sample(
-    u_value: float,
-    control_points_single: torch.Tensor,
-    knots: torch.Tensor,
-    degree: int,
-) -> torch.Tensor:
-    cp_np = control_points_single[0].detach().cpu().numpy()  # (n_control_points, dim)
-    knots_np = knots.detach().cpu().numpy()
-    values = [
-        float(
-            SciPyBSpline(
-                knots_np,
-                cp_np[:, dim_index],
-                degree,
-                extrapolate=False,
-            )(u_value)
-        )
-        for dim_index in range(cp_np.shape[1])
-    ]
-    return torch.tensor(values, dtype=control_points_single.dtype).view(1, 1, -1)
 
 
 def _run_bspline_gradcheck(
@@ -87,83 +61,120 @@ def _tanh_map(x: torch.Tensor, out_min: float, out_max: float) -> torch.Tensor:
     return 0.5 * (mapped + 1.0) * (out_max - out_min) + out_min
 
 
-@pytest.mark.parametrize(
-    ("degree", "n_control_points", "dim", "u_value"),
-    [
-        (1, 4, 1, -1.0),
-        (2, 5, 2, -0.25),
-        (3, 6, 3, 0.3),
-        (3, 6, 2, 1.0),
-    ],
-)
-def test_single_curve_single_sample_matches_scipy(degree: int, n_control_points: int, dim: int, u_value: float) -> None:
-    control_points_single = _seeded_control_points(1, n_control_points, dim)
-    knots = uniform_augmented_knots(n_control_points, degree, dtype=DTYPE)
-
-    actual = _torch_single_curve_single_sample(u_value, control_points_single, knots, degree)
-    expected = _scipy_single_curve_single_sample(u_value, control_points_single, knots, degree)
-
-    torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-10)
-
-
 @pytest.mark.parametrize("degree", [0, 5])
-@pytest.mark.parametrize(
-    "device",
-    [
-        "cpu",
-        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")),
-    ],
-)
-@pytest.mark.parametrize(
-    ("dtype", "knots_dtype"),
-    [(torch.float32, torch.float32), (torch.float64, torch.float64), (torch.float32, torch.float64)],
-    ids=["float32", "float64", "float32-with-float64-knots"],
-)
+@pytest.mark.parametrize("device", DEVICES)
 def test_nonuniform_repeated_knots_and_noncontiguous_inputs_match_scipy(
-    degree: int, dtype: torch.dtype, knots_dtype: torch.dtype, device: str
+    degree: int, device: str, precision: tuple[torch.dtype, float, float]
 ) -> None:
-    knots = _nonuniform_knots(degree, knots_dtype).to(device)
+    dtype, rtol, atol = precision
+    knots = _nonuniform_knots(degree, DTYPE).to(device=device, dtype=dtype)
     n_control_points = len(knots) - degree - 1
-    control_points = _seeded_control_points(2, n_control_points, 4).to(device=device, dtype=dtype)[..., ::2]
-    u = torch.tensor(
-        [
-            [-1.0, -0.8, -0.6, -0.2, 0.25, 0.6, 1.0],
-            [1.0, 0.8, 0.45, 0.2, -0.2, -0.7, -1.0],
-        ],
-        dtype=dtype,
-        device=device,
-    ).T
+    control_points = (_seeded_control_points(2, n_control_points, 4) / 3).to(device=device, dtype=dtype)[..., ::2]
+    interior = torch.unique_consecutive(knots[degree + 1 : -degree - 1])
+    assert interior.numel() == 3  # Intended distinct knots must survive input rounding.
+    below = torch.nextafter(interior, torch.full_like(interior, -torch.inf))
+    above = torch.nextafter(interior, torch.full_like(interior, torch.inf))
+    samples = torch.cat((knots[:1], below, interior, above, knots[-1:]))
+    u = torch.stack((samples, samples.flip(0))).T
     assert not u.is_contiguous()
     assert not control_points.is_contiguous()
 
     actual = bspline_curves(u, control_points, knots, degree)
-    assert actual.dtype == dtype
-    expected = torch.stack(
-        [
-            torch.as_tensor(
-                SciPyBSpline(knots.cpu().numpy(), control_points[curve].cpu().numpy(), degree, extrapolate=False)(
-                    u[:, curve].cpu().numpy()
-                ),
-                dtype=dtype,
-                device=device,
-            )
-            for curve in range(u.shape[1])
-        ],
-        dim=1,
-    )
-
-    tolerance = 1e-6 if dtype == torch.float32 else 1e-10
-    torch.testing.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
+    expected, _, _ = bspline_reference(u, control_points, knots, degree)
+    if dtype == torch.float32:
+        rtol = 1e-6  # Retain the tighter existing FP32 repeated-knot budget.
+    assert_reference(actual, expected, (dtype, rtol, atol), device=u.device)
 
 
 @pytest.mark.parametrize("degree", [0, 5])
+@pytest.mark.parametrize("device", DEVICES)
+def test_float32_inputs_with_float64_knots_match_scipy(degree: int, device: str) -> None:
+    # Preserve the existing mixed-knot precision contract separately from native precision.
+    knots = _nonuniform_knots(degree, DTYPE).to(device)
+    control_points = (_seeded_control_points(2, len(knots) - degree - 1, 4) / 3).to(device=device, dtype=torch.float32)[
+        ..., ::2
+    ]
+    # A rounded FP32 argument can lie on a different side of an FP64 repeated
+    # knot. Keep endpoints and those boundary samples in the mixed-knot check.
+    u = (
+        torch.tensor(
+            [[-1.0, -0.8, -0.6, -0.2, 0.25, 0.6, 1.0], [1.0, 0.8, 0.45, 0.2, -0.2, -0.7, -1.0]],
+            dtype=DTYPE,
+        )
+        .to(device=device, dtype=torch.float32)
+        .T
+    )
+    assert not u.is_contiguous()
+    assert not control_points.is_contiguous()
+    actual = bspline_curves(u, control_points, knots, degree)
+    expected, _, _ = bspline_reference(u, control_points, knots, degree)
+
+    assert_reference(actual, expected, (torch.float32, 1e-6, 1e-6), device=u.device)
+
+
 @pytest.mark.parametrize(
-    "device",
+    ("degree", "dim", "gradient_mode", "repeated_knots"),
     [
-        "cpu",
-        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")),
+        pytest.param(0, 2, "both", False, id="constant-both"),
+        pytest.param(1, 2, "arguments", False, id="linear-arguments"),
+        pytest.param(2, 3, "coefficients", False, id="quadratic-coefficients"),
+        pytest.param(3, 1, "both", False, id="cubic-scalar-both"),
+        pytest.param(3, 8, "both", False, id="cubic-vector-both"),
+        pytest.param(3, 2, "both", True, id="repeated-knots-both"),
     ],
 )
+def test_bspline_values_and_gradients_match_scipy(
+    degree: int,
+    dim: int,
+    gradient_mode: str,
+    repeated_knots: bool,
+    precision: tuple[torch.dtype, float, float],
+) -> None:
+    dtype, rtol, atol = precision
+    knots_master = (
+        _nonuniform_knots(degree, DTYPE) if repeated_knots else uniform_augmented_knots(degree + 4, degree, dtype=DTYPE)
+    )
+    knots = knots_master.to(dtype)
+    coefficients = (_seeded_control_points(2, len(knots) - degree - 1, dim) / 3).to(dtype)
+    coefficients.requires_grad_(gradient_mode != "arguments")
+    # Interior arguments avoid undefined derivatives; duplicated rows exercise accumulation.
+    u = torch.tensor(
+        [[-0.75, -0.375], [-0.375, 0.125], [0.125, 0.625], [0.125, 0.625], [0.625, -0.75]], dtype=DTYPE
+    ).to(dtype)
+    u.requires_grad_(gradient_mode != "coefficients")
+    generator = torch.Generator().manual_seed(17)
+    upstream = (torch.rand(*u.shape, dim, dtype=DTYPE, generator=generator) * 1.5 - 0.75).to(dtype)
+    actual = bspline_curves(u, coefficients, knots, degree)
+    expected, grad_u, grad_coefficients = bspline_reference(u, coefficients, knots, degree, upstream)
+    actual.backward(upstream)
+
+    assert_reference(actual, expected, (dtype, rtol, atol), device=u.device)
+    for leaf, reference in ((u, grad_u), (coefficients, grad_coefficients)):
+        if not leaf.requires_grad:
+            assert leaf.grad is None
+            continue
+        assert leaf.grad is not None
+        assert_reference(leaf.grad, reference, precision, device=leaf.device)
+
+
+def test_generated_knots_preserve_requested_dtype_shape_and_endpoints(
+    precision: tuple[torch.dtype, float, float],
+) -> None:
+    dtype, _, _ = precision
+    degree, n_control_points = 3, 7
+    knots = uniform_augmented_knots(n_control_points, degree, dtype=dtype, k_min=-0.5, k_max=1.5)
+
+    assert knots.dtype == dtype
+    assert knots.device == torch.device("cpu")
+    assert knots.shape == (n_control_points + degree + 1,)
+    assert torch.isfinite(knots).all()
+    assert torch.all(knots[: degree + 1] == -0.5)
+    assert torch.all(knots[-degree - 1 :] == 1.5)
+    assert torch.all(knots[degree + 1 : n_control_points + 1] > knots[degree:n_control_points])
+
+
+@pytest.mark.parametrize("degree", [0, 5])
+@pytest.mark.parametrize("device", DEVICES)
 def test_nonuniform_repeated_knots_gradcheck(degree: int, device: str) -> None:
     knots = _nonuniform_knots(degree, DTYPE).to(device)
     n_control_points = len(knots) - degree - 1
@@ -180,78 +191,20 @@ def test_nonuniform_repeated_knots_gradcheck(degree: int, device: str) -> None:
     )
 
 
-def test_multiple_curves_one_sample_is_concat_over_curve_dimension() -> None:
-    degree = 3
-    n_control_points = 7
-    dim = 2
-    num_curves = 3
-
-    control_points = _seeded_control_points(num_curves, n_control_points, dim)
-    knots = uniform_augmented_knots(n_control_points, degree, dtype=DTYPE)
-    u = torch.tensor([[-0.8, -0.1, 0.6]], dtype=DTYPE)  # (batch=1, curves=3)
-
-    batched = bspline_curves(u, control_points, knots, degree)  # (1, 3, dim)
-
-    per_curve = []
-    for curve_index in range(num_curves):
-        u_single = u[:, curve_index : curve_index + 1]  # (1, 1)
-        cp_single = control_points[curve_index : curve_index + 1, :, :]  # (1, n_control_points, dim)
-        per_curve.append(bspline_curves(u_single, cp_single, knots, degree))  # each (1, 1, dim)
-
-    expected = torch.cat(per_curve, dim=1)  # concat curves -> (1, 3, dim)
-    torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
-
-
-def test_one_curve_multiple_samples_is_concat_over_batch_dimension() -> None:
-    degree = 2
-    n_control_points = 6
-    dim = 2
-
-    control_points_single = _seeded_control_points(1, n_control_points, dim)
-    knots = uniform_augmented_knots(n_control_points, degree, dtype=DTYPE)
-    u = torch.tensor([[-0.9], [-0.2], [0.1], [0.8]], dtype=DTYPE)  # (batch=4, curves=1)
-
-    batched = bspline_curves(u, control_points_single, knots, degree)  # (4, 1, dim)
-
-    per_sample = []
-    for sample_index in range(u.shape[0]):
-        u_single = u[sample_index : sample_index + 1, :]  # (1, 1)
-        per_sample.append(bspline_curves(u_single, control_points_single, knots, degree))  # each (1, 1, dim)
-
-    expected = torch.cat(per_sample, dim=0)  # concat batch -> (4, 1, dim)
-    torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
-
-
-def test_multiple_curves_multiple_samples_matches_nested_single_single_concatenation() -> None:
-    degree = 3
-    n_control_points = 8
-    dim = 3
-    num_curves = 2
-
-    control_points = _seeded_control_points(num_curves, n_control_points, dim)
-    knots = uniform_augmented_knots(n_control_points, degree, dtype=DTYPE)
-    u = torch.tensor(
-        [
-            [-0.9, -0.1],
-            [0.2, 0.7],
-            [0.5, 1.0],
-        ],
-        dtype=DTYPE,
-    )  # (batch=3, curves=2)
-
-    batched = bspline_curves(u, control_points, knots, degree)  # (3, 2, dim)
-
-    rows = []
-    for sample_index in range(u.shape[0]):
-        row_curves = []
-        for curve_index in range(num_curves):
-            u_single = u[sample_index : sample_index + 1, curve_index : curve_index + 1]  # (1, 1)
-            cp_single = control_points[curve_index : curve_index + 1, :, :]  # (1, n_control_points, dim)
-            row_curves.append(bspline_curves(u_single, cp_single, knots, degree))  # (1, 1, dim)
-        rows.append(torch.cat(row_curves, dim=1))  # (1, curves, dim)
-
-    expected = torch.cat(rows, dim=0)  # (batch, curves, dim)
-    torch.testing.assert_close(batched, expected, rtol=1e-12, atol=1e-12)
+@pytest.mark.parametrize(
+    ("batch", "curves", "degree", "count", "dim"),
+    [(1, 3, 3, 7, 2), (4, 1, 2, 6, 2), (3, 2, 3, 8, 3)],
+)
+def test_batching_matches_individual_evaluations(batch, curves, degree, count, dim) -> None:
+    coefficients = _seeded_control_points(curves, count, dim)
+    knots = uniform_augmented_knots(count, degree, dtype=DTYPE)
+    u = torch.linspace(-0.9, 1.0, batch * curves, dtype=DTYPE).reshape(batch, curves)
+    actual = bspline_curves(u, coefficients, knots, degree)
+    assert actual.shape == (batch, curves, dim)
+    for b in range(batch):
+        for m in range(curves):
+            expected = bspline_curves(u[b : b + 1, m : m + 1], coefficients[m : m + 1], knots, degree)
+            torch.testing.assert_close(actual[b : b + 1, m : m + 1], expected, rtol=1e-12, atol=1e-12)
 
 
 @pytest.mark.parametrize(
@@ -479,14 +432,14 @@ def test_bspline_basis_normalizes_to_custom_knot_interval() -> None:
     )
 
     actual = basis(raw_u, coefficients)
-    expected = bspline_curves(
-        arctan(raw_u, scale=1.5, out_min=0, out_max=1),
-        coefficients,
-        knots,
-        degree,
-    )
+    # Compute the mapping analytically instead of calling the implementation under test.
+    mapped = torch.from_numpy(np.arctan(numpy64(raw_u) / 1.5) / np.pi + 0.5)
+    expected, _, _ = bspline_reference(mapped, coefficients, knots, degree)
 
-    torch.testing.assert_close(actual, expected, rtol=1e-12, atol=1e-12)
+    assert actual.dtype == DTYPE
+    assert actual.device == raw_u.device
+    assert torch.isfinite(actual).all()
+    np.testing.assert_allclose(numpy64(actual), expected, rtol=1e-12, atol=1e-12)
 
 
 def test_bspline_basis_supports_plain_callable_input_map() -> None:
@@ -584,55 +537,19 @@ def test_bspline_basis_rejects_input_map_that_is_not_string_or_callable() -> Non
         BSplineBasis(input_map=123)  # type: ignore[arg-type]
 
 
-def test_bspline_basis_rejects_invalid_u_rank() -> None:
+@pytest.mark.parametrize(
+    ("u_shape", "coefficient_shape", "message"),
+    [
+        ((2, 1, 1), (2, 7, 3), "Input u must be a 2D tensor"),
+        ((2, 3), (3, 7), "Input coefficients must be a 3D tensor"),
+        ((2, 3), (2, 7, 1), "The number of curves must match"),
+        ((2, 3), (3, 6, 1), "The number of control points in coefficients must match"),
+    ],
+)
+def test_bspline_basis_rejects_invalid_shapes(u_shape, coefficient_shape, message) -> None:
     basis = BSplineBasis(degree=3, knots_config=7)
-    coefficients = torch.randn(2, 7, 3)
-    u = torch.randn(2, 1, 1)
-    expected_message = f"Input u must be a 2D tensor of shape (batch_size, num_curves). Got shape: {u.shape}"
-
-    with pytest.raises(ValueError, match=re.escape(expected_message)):
-        basis(u, coefficients)
-
-
-def test_bspline_basis_rejects_invalid_coefficients_rank() -> None:
-    basis = BSplineBasis(degree=3, knots_config=7)
-    u = torch.randn(2, 3)
-    coefficients = torch.randn(3, 7)
-    expected_message = (
-        "Input coefficients must be a 3D tensor of shape "
-        "(num_curves, "
-        f"n_control_points_per_curve={basis.n_control_points_per_curve}, dim). "
-        f"Got shape: {coefficients.shape}"
-    )
-
-    with pytest.raises(ValueError, match=re.escape(expected_message)):
-        basis(u, coefficients)
-
-
-def test_bspline_basis_rejects_curve_count_mismatch() -> None:
-    basis = BSplineBasis(degree=3, knots_config=7)
-    u = torch.randn(2, 3)
-    coefficients = torch.randn(2, 7, 1)
-    expected_message = (
-        "The number of curves must match between u and coefficients. "
-        f"Got u.shape[1]={u.shape[1]} and coefficients.shape[0]={coefficients.shape[0]}."
-    )
-
-    with pytest.raises(ValueError, match=re.escape(expected_message)):
-        basis(u, coefficients)
-
-
-def test_bspline_basis_rejects_control_point_count_mismatch() -> None:
-    basis = BSplineBasis(degree=3, knots_config=7)
-    u = torch.randn(2, 3)
-    coefficients = torch.randn(3, 6, 1)
-    expected_message = (
-        "The number of control points in coefficients must match this basis. "
-        f"Expected {basis.n_control_points_per_curve}, got {coefficients.shape[1]}."
-    )
-
-    with pytest.raises(ValueError, match=re.escape(expected_message)):
-        basis(u, coefficients)
+    with pytest.raises(ValueError, match=message):
+        basis(torch.empty(u_shape), torch.empty(coefficient_shape))
 
 
 @pytest.mark.parametrize(
