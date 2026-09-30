@@ -115,35 +115,29 @@ class _BSplineFunction(torch.autograd.Function):
 
         """
         num_samples, num_curves = u.shape
-        basis = torch.zeros(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
-        left = torch.empty(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
-        right = torch.empty(num_samples, num_curves, degree + 1, device=u.device, dtype=u.dtype)
-        ratios = torch.empty_like(u)
-        saved = torch.empty_like(u)
+        basis = torch.ones(num_samples, num_curves, 1, device=u.device, dtype=u.dtype)
+        if degree == 0:
+            return basis
 
-        basis[..., 0].fill_(1)
+        offsets = torch.arange(1, degree + 1, device=spans.device)
+        knot_indices = spans.unsqueeze(-1) + offsets
+        left = torch.empty(num_samples, num_curves, degree, device=u.device, dtype=u.dtype)
+        right = torch.empty_like(left)
+        torch.sub(u.unsqueeze(-1), knots[knot_indices - degree], out=left)
+        torch.sub(knots[knot_indices], u.unsqueeze(-1), out=right)
 
         for p_iter in range(1, degree + 1):
-            left_idx = spans + 1 - p_iter
-            right_idx = spans + p_iter
-            left[..., p_iter] = u - knots[left_idx]
-            right[..., p_iter] = knots[right_idx] - u
+            left_part = left[..., -p_iter:]
+            right_part = right[..., :p_iter]
+            ratios = basis / (right_part + left_part)
+            ratios.nan_to_num_(0, 0, 0)
 
-            saved.zero_()
-            for r_iter in range(p_iter):
-                denominator = right[..., r_iter + 1] + left[..., p_iter - r_iter]
-                torch.div(basis[..., r_iter], denominator, out=ratios)
-                ratios.nan_to_num_(0, 0, 0)
-
-                torch.addcmul(
-                    saved,
-                    right[..., r_iter + 1],
-                    ratios,
-                    out=basis[..., r_iter],
-                )
-                torch.mul(left[..., p_iter - r_iter], ratios, out=saved)
-
-            basis[..., p_iter] = saved
+            # Each left contribution becomes the saved term for the next basis value.
+            next_basis = torch.empty(num_samples, num_curves, p_iter + 1, device=u.device, dtype=u.dtype)
+            next_basis[..., 0].zero_()
+            torch.mul(left_part, ratios, out=next_basis[..., 1:])
+            next_basis[..., :p_iter].addcmul_(right_part, ratios)
+            basis = next_basis
 
         return basis
 

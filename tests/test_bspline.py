@@ -20,6 +20,12 @@ def _seeded_control_points(num_curves: int, n_control_points: int, dim: int) -> 
     return torch.randn(num_curves, n_control_points, dim, dtype=DTYPE, generator=generator)
 
 
+def _nonuniform_knots(degree: int, dtype: torch.dtype) -> torch.Tensor:
+    # Full multiplicity at -0.2 exercises discontinuous splines for positive degrees.
+    internal_knots = [-0.6] + [-0.2] * (degree + 1) + [0.45]
+    return torch.tensor([-1.0] * (degree + 1) + internal_knots + [1.0] * (degree + 1), dtype=dtype)
+
+
 def _torch_single_curve_single_sample(
     u_value: float,
     control_points_single: torch.Tensor,
@@ -98,6 +104,80 @@ def test_single_curve_single_sample_matches_scipy(degree: int, n_control_points:
     expected = _scipy_single_curve_single_sample(u_value, control_points_single, knots, degree)
 
     torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-10)
+
+
+@pytest.mark.parametrize("degree", [0, 5])
+@pytest.mark.parametrize(
+    "device",
+    [
+        "cpu",
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")),
+    ],
+)
+@pytest.mark.parametrize(
+    ("dtype", "knots_dtype"),
+    [(torch.float32, torch.float32), (torch.float64, torch.float64), (torch.float32, torch.float64)],
+    ids=["float32", "float64", "float32-with-float64-knots"],
+)
+def test_nonuniform_repeated_knots_and_noncontiguous_inputs_match_scipy(
+    degree: int, dtype: torch.dtype, knots_dtype: torch.dtype, device: str
+) -> None:
+    knots = _nonuniform_knots(degree, knots_dtype).to(device)
+    n_control_points = len(knots) - degree - 1
+    control_points = _seeded_control_points(2, n_control_points, 4).to(device=device, dtype=dtype)[..., ::2]
+    u = torch.tensor(
+        [
+            [-1.0, -0.8, -0.6, -0.2, 0.25, 0.6, 1.0],
+            [1.0, 0.8, 0.45, 0.2, -0.2, -0.7, -1.0],
+        ],
+        dtype=dtype,
+        device=device,
+    ).T
+    assert not u.is_contiguous()
+    assert not control_points.is_contiguous()
+
+    actual = bspline_curves(u, control_points, knots, degree)
+    assert actual.dtype == dtype
+    expected = torch.stack(
+        [
+            torch.as_tensor(
+                SciPyBSpline(knots.cpu().numpy(), control_points[curve].cpu().numpy(), degree, extrapolate=False)(
+                    u[:, curve].cpu().numpy()
+                ),
+                dtype=dtype,
+                device=device,
+            )
+            for curve in range(u.shape[1])
+        ],
+        dim=1,
+    )
+
+    tolerance = 1e-6 if dtype == torch.float32 else 1e-10
+    torch.testing.assert_close(actual, expected, rtol=tolerance, atol=tolerance)
+
+
+@pytest.mark.parametrize("degree", [0, 5])
+@pytest.mark.parametrize(
+    "device",
+    [
+        "cpu",
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA is unavailable")),
+    ],
+)
+def test_nonuniform_repeated_knots_gradcheck(degree: int, device: str) -> None:
+    knots = _nonuniform_knots(degree, DTYPE).to(device)
+    n_control_points = len(knots) - degree - 1
+    control_points = _seeded_control_points(2, n_control_points, 2).to(device).requires_grad_()
+    # Stay away from the knot discontinuities while checking both differentiable inputs.
+    u = torch.tensor([[-0.85, -0.4], [0.1, 0.7]], dtype=DTYPE, device=device, requires_grad=True)
+
+    assert gradcheck(
+        lambda u_arg, cp_arg: bspline_curves(u_arg, cp_arg, knots, degree),
+        (u, control_points),
+        eps=GRADCHECK_EPS,
+        atol=GRADCHECK_ATOL,
+        rtol=GRADCHECK_RTOL,
+    )
 
 
 def test_multiple_curves_one_sample_is_concat_over_curve_dimension() -> None:
