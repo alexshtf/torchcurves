@@ -5,7 +5,7 @@ sync:
 	uv sync --all-groups
 
 test:
-	uv run pytest tests
+	TORCH_DISABLE_NATIVE_JIT=1 uv run pytest tests
 
 doc:
 	rm -rf doc/source/generated
