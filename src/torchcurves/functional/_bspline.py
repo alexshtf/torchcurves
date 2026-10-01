@@ -218,17 +218,15 @@ class _BSplineFunction(torch.autograd.Function):
         cp_indices: torch.Tensor,
         control_points_shape: tuple[int, int, int],
     ) -> torch.Tensor:
-        grad_control_points = torch.zeros(
-            control_points_shape,
-            device=grad_output.device,
-            dtype=grad_output.dtype,
-        )
+        updates = (grad_output.unsqueeze(2) * basis.unsqueeze(3)).reshape(-1, grad_output.shape[-1])
+        # Autocast's output gradient and the saved basis can have different
+        # dtypes. Accumulate in the product's dtype; autograd restores leaf dtype.
+        grad_control_points = updates.new_zeros(control_points_shape)
 
         flat_indices = _BSplineFunction._flat_control_point_indices(
             cp_indices,
             n_control_points=control_points_shape[1],
         ).reshape(-1)
-        updates = (grad_output.unsqueeze(2) * basis.unsqueeze(3)).reshape(-1, grad_output.shape[-1])
         grad_control_points.reshape(-1, grad_output.shape[-1]).index_add_(0, flat_indices, updates)
         return grad_control_points
 
@@ -238,6 +236,14 @@ class _BSplineFunction(torch.autograd.Function):
         basis_deriv: torch.Tensor,
         gathered_control_points: torch.Tensor,
     ) -> torch.Tensor:
+        # Backward may run outside autocast. Both matmul branches require
+        # matching operands, including when low-precision u used FP32 knots.
+        dtype = torch.promote_types(
+            torch.promote_types(grad_output.dtype, basis_deriv.dtype), gathered_control_points.dtype
+        )
+        grad_output = grad_output.to(dtype=dtype)
+        basis_deriv = basis_deriv.to(dtype=dtype)
+        gathered_control_points = gathered_control_points.to(dtype=dtype)
         if grad_output.shape[-1] > basis_deriv.shape[-1]:
             projected_grad = torch.matmul(gathered_control_points, grad_output.unsqueeze(-1)).squeeze(-1)
             return (basis_deriv * projected_grad).sum(dim=-1)
@@ -323,6 +329,11 @@ def bspline_curves(
 
     This function automatically handles backpropagation based on whether inputs require gradients:
     - Computes gradients only for inputs that require them using custom autograd.
+
+    Under autocast, the curve contraction follows ``torch.matmul``'s output dtype
+    policy. Arguments may arrive in the autocast dtype with FP32 control points
+    and knots. Backward can run outside autocast; leaf gradients retain their
+    respective input dtypes.
 
     Args:
         u: A tensor of size :math:`(B, C)` of values between ``knots.min()`` and ``knots.max()``, representing

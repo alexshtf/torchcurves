@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Optional, Sequence, Union
 
 import torch
@@ -29,6 +30,8 @@ class BSplineBasis(nn.Module):
     This module stores the knot vector, spline degree, and input map, but does
     not own coefficients. Callers provide coefficients at evaluation time,
     which makes this module useful when another network predicts them.
+    To replace knots, use ``load_state_dict`` so the cached input interval is
+    refreshed as well.
 
     Args:
         degree: Degree of the B-spline (default: 3).
@@ -68,43 +71,64 @@ class BSplineBasis(nn.Module):
         self.input_map = resolve_input_map(input_map)
 
         if isinstance(knots_config, int):
-            n_control_points_per_curve = knots_config
-            if n_control_points_per_curve <= self.degree:
-                raise ValueError(
-                    f"Number of control points ({n_control_points_per_curve}) must be greater "
-                    f"than the degree ({self.degree})."
-                )
-            parameter_min, parameter_max = _validate_parameter_range(parameter_range)
-            knot_buffer = uniform_augmented_knots(
-                n_control_points_per_curve,
-                self.degree,
-                k_min=parameter_min,
-                k_max=parameter_max,
-            )
+            n_control_points = knots_config
         elif isinstance(knots_config, torch.Tensor):
             if parameter_range is not None:
                 raise ValueError("parameter_range can only be set when knots_config is an int.")
             if knots_config.ndim != 1:
                 raise ValueError("Provided knots_config tensor must be 1D.")
-            num_knots = knots_config.shape[0]
-            n_control_points_per_curve = num_knots - self.degree - 1
-            if n_control_points_per_curve <= self.degree:
-                raise ValueError(
-                    f"Number of control points ({n_control_points_per_curve}) must be greater "
-                    f"than the degree ({self.degree})."
-                )
-            knot_buffer = knots_config.detach().clone()
+            n_control_points = knots_config.shape[0] - self.degree - 1
         else:
             raise TypeError("knots_config must be an int (number of control points) or a torch.Tensor (knot vector).")
+        if n_control_points <= self.degree:
+            raise ValueError(
+                f"Number of control points ({n_control_points}) must be greater than the degree ({self.degree})."
+            )
 
-        self.n_control_points_per_curve = n_control_points_per_curve
+        self.n_control_points_per_curve = n_control_points
+        self._knots_config: Union[tuple[float, float], torch.Tensor]
+        if isinstance(knots_config, int):
+            self._knots_config = _validate_parameter_range(parameter_range)
+            knot_buffer = torch.empty(n_control_points + self.degree + 1, dtype=torch.float32)
+        else:
+            knot_buffer = knots_config.detach().clone()
+            # The CPU template survives device moves and to_empty; a meta
+            # template retains the explicit boundary that no values were given.
+            self._knots_config = knot_buffer if knot_buffer.is_meta else knot_buffer.cpu().clone()
+
         self.register_buffer("knots", knot_buffer)
+        self.reset_parameters()
+        self.register_load_state_dict_post_hook(self._invalidate_parameter_range)
 
-        # Effective parameter range for a degree-p spline with C control points is
-        # [knots[p], knots[C]], assuming a sorted knot vector.
-        self._knot_min = self.knots[self.degree].item()
-        self._knot_max = self.knots[self.n_control_points_per_curve].item()
-        self.parameter_range = (self._knot_min, self._knot_max)
+    def _invalidate_parameter_range(self, *args) -> None:
+        self.__dict__.pop("parameter_range", None)
+
+    def _apply(self, fn, recurse=True):
+        result = super()._apply(fn, recurse=recurse)
+        self._invalidate_parameter_range()
+        return result
+
+    def reset_parameters(self) -> None:
+        """Restore constructor knots in the buffer's current dtype and device.
+
+        Explicit meta knots have no reset recipe. Load a real checkpoint to
+        restore their values for evaluation, or use a custom initializer.
+
+        """
+        with torch.no_grad():
+            if isinstance(self._knots_config, tuple):
+                knots = uniform_augmented_knots(
+                    self.n_control_points_per_curve,
+                    self.degree,
+                    dtype=self.knots.dtype,
+                    device=self.knots.device,
+                    k_min=self._knots_config[0],
+                    k_max=self._knots_config[1],
+                )
+            else:
+                knots = self._knots_config
+            self.knots.copy_(knots)
+        self._invalidate_parameter_range()
 
     def __repr__(self):
         return (
@@ -114,8 +138,14 @@ class BSplineBasis(nn.Module):
             f"knots_shape={self.knots.shape if hasattr(self, 'knots') else None})"
         )
 
+    @cached_property
+    def parameter_range(self) -> tuple[float, float]:
+        """Cache float bounds until the knots are reset, loaded, or moved/cast."""
+        # For degree p and C control points, the base interval is [knots[p], knots[C]].
+        return (float(self.knots[self.degree].item()), float(self.knots[self.n_control_points_per_curve].item()))
+
     def _prepare_arg(self, u: torch.Tensor) -> torch.Tensor:
-        return self.input_map(u, self._knot_min, self._knot_max)
+        return self.input_map(u, *self.parameter_range)
 
     def forward(self, u: torch.Tensor, coefficients: torch.Tensor) -> torch.Tensor:
         """Evaluate caller-supplied coefficients in this B-spline basis.
@@ -214,11 +244,15 @@ class BSplineCurve(nn.Module):
         self.control_points = nn.Parameter(
             torch.empty(self.num_curves, self.basis.n_control_points_per_curve, self.dim)
         )
-        nn.init.xavier_uniform_(self.control_points)
+        self.reset_parameters()
         self.basis = self.basis.to(
             dtype=self.control_points.dtype,
             device=self.control_points.device,
         )
+
+    def reset_parameters(self) -> None:
+        """Initialize this module's control points without resetting its basis."""
+        nn.init.xavier_uniform_(self.control_points)
 
     def __repr__(self):
         return (
