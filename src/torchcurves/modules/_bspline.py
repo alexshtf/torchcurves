@@ -1,3 +1,4 @@
+from functools import cached_property
 from typing import Optional, Sequence, Union
 
 import torch
@@ -29,6 +30,8 @@ class BSplineBasis(nn.Module):
     This module stores the knot vector, spline degree, and input map, but does
     not own coefficients. Callers provide coefficients at evaluation time,
     which makes this module useful when another network predicts them.
+    To replace knots, use ``load_state_dict`` so the cached input interval is
+    refreshed as well.
 
     Args:
         degree: Degree of the B-spline (default: 3).
@@ -95,6 +98,15 @@ class BSplineBasis(nn.Module):
 
         self.register_buffer("knots", knot_buffer)
         self.reset_parameters()
+        self.register_load_state_dict_post_hook(self._invalidate_parameter_range)
+
+    def _invalidate_parameter_range(self, *args) -> None:
+        self.__dict__.pop("parameter_range", None)
+
+    def _apply(self, fn, recurse=True):
+        result = super()._apply(fn, recurse=recurse)
+        self._invalidate_parameter_range()
+        return result
 
     def reset_parameters(self) -> None:
         """Restore constructor knots in the buffer's current dtype and device.
@@ -116,6 +128,7 @@ class BSplineBasis(nn.Module):
             else:
                 knots = self._knots_config
             self.knots.copy_(knots)
+        self._invalidate_parameter_range()
 
     def __repr__(self):
         return (
@@ -125,9 +138,9 @@ class BSplineBasis(nn.Module):
             f"knots_shape={self.knots.shape if hasattr(self, 'knots') else None})"
         )
 
-    @property
+    @cached_property
     def parameter_range(self) -> tuple[float, float]:
-        """Read the interval from materialized knots, retaining float bounds for input maps."""
+        """Cache float bounds until the knots are reset, loaded, or moved/cast."""
         # For degree p and C control points, the base interval is [knots[p], knots[C]].
         return (float(self.knots[self.degree].item()), float(self.knots[self.n_control_points_per_curve].item()))
 

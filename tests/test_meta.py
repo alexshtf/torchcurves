@@ -67,7 +67,8 @@ def test_meta_materialization_reset_or_checkpoint(factory, mode: str) -> None:
     torch.testing.assert_close(output, mapped.unsqueeze(-1), rtol=1e-12, atol=1e-12)
 
 
-def test_custom_knots_reset_and_float_bound_input_map() -> None:
+@pytest.mark.parametrize("assign", [False, True])
+def test_custom_knots_reset_and_float_bound_input_map(assign: bool) -> None:
     def custom_map(x, out_min, out_max):
         assert isinstance(out_min, float) and isinstance(out_max, float)
         return out_min + 0.5 * (out_max - out_min) * (torch.tanh(x) + 1.0)
@@ -75,8 +76,15 @@ def test_custom_knots_reset_and_float_bound_input_map() -> None:
     knots = torch.tensor([0.0] * 4 + [0.25, 0.75, 2.5] + [3.0] * 4, dtype=torch.float64)
     expected = knots.clone()
     basis = BSplineBasis(degree=3, knots_config=knots, input_map=custom_map)
+    assert basis.parameter_range == (0.0, 3.0)
     knots.fill_(99.0)  # Caller mutation must not change the reset recipe.
-    basis.load_state_dict({"knots": expected + 1.0})
+    basis.load_state_dict({"knots": expected + 0.1}, assign=assign)
+    assert basis.parameter_range == (0.1, 3.1)
+    basis.half()
+    assert basis.parameter_range == tuple(torch.tensor([0.1, 3.1], dtype=torch.float16).tolist())
+    basis.reset_parameters()
+    assert basis.parameter_range == (0.0, 3.0)
+    basis.double()
     basis.to("meta").to_empty(device="cpu")
     basis.reset_parameters()
     torch.testing.assert_close(basis.knots, expected, rtol=0, atol=0)
