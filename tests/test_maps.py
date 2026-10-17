@@ -11,10 +11,13 @@ DTYPE = torch.float64
 
 
 @pytest.mark.parametrize("kind", ["rational", "arctan", "clamp"])
-def test_real_input_maps_match_numpy(kind: str, precision: tuple[torch.dtype, float, float]) -> None:
+@pytest.mark.parametrize(("out_min", "out_max"), [(-1.0, 1.0), (-0.25, 1.5)])
+def test_real_input_maps_match_numpy(
+    kind: str, out_min: float, out_max: float, precision: tuple[torch.dtype, float, float]
+) -> None:
     dtype, _, _ = precision
     x = torch.tensor([-3.0, -0.5, 0.0, 0.4, 2.5], dtype=DTYPE).to(dtype)
-    out_min, out_max, scale = -0.25, 1.5, 0.75
+    scale = 0.75
     factory = getattr(tc.maps.Real, kind)
 
     actual = factory(scale=scale)(x, out_min, out_max)
