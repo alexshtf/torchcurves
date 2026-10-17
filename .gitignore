@@ -58,7 +58,6 @@ docs/_templates/
 Thumbs.db
 
 # UV
-.python-version
 .ruff_cache
 
 # Sphinx

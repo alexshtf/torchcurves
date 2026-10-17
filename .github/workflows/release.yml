@@ -110,6 +110,8 @@ jobs:
 
   build:
     name: Validate and build release artifacts
+    env:
+      UV_PYTHON: "3.13"
     needs:
       - meta
       - prepare_versioned_source

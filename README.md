@@ -365,6 +365,10 @@ uv venv
 uv sync --all-groups
 ```
 
+Local development defaults to Python 3.9 via `.python-version`, matching the minimum
+supported version so compatibility issues are caught during development. CI explicitly
+selects each Python version in its test matrix to verify support across Python 3.9–3.13.
+
 ## Running Tests
 
 ```bash
