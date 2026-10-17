@@ -49,7 +49,7 @@ def test_legendre_values_and_gradients_match_numpy(
     output.backward(upstream)
     expected, gradients = legendre_reference(x, coefficients, upstream)
     assert_reference(output, expected, precision)
-    for leaf, (reference, scale) in zip((x, coefficients), gradients):
+    for leaf, (reference, scale) in zip((x, coefficients), gradients, strict=True):
         if not leaf.requires_grad:
             assert leaf.grad is None
             continue
@@ -235,7 +235,7 @@ def test_legendre_checkpointing_preserves_values_and_gradients(
     actual = evaluate(segments=checkpoint_segments)
 
     assert checkpoint_calls == expected_checkpoint_calls
-    for actual_tensor, expected_tensor in zip(actual, expected):
+    for actual_tensor, expected_tensor in zip(actual, expected, strict=True):
         torch.testing.assert_close(actual_tensor, expected_tensor, rtol=1e-12, atol=1e-12)
 
 

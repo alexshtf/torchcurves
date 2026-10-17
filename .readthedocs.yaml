@@ -8,7 +8,7 @@ version: 2
 build:
    os: ubuntu-24.04
    tools:
-      python: "3.13"
+      python: "3.12"
    apt_packages:
       - pandoc
    jobs:
@@ -19,7 +19,7 @@ build:
       create_environment:
          - uv venv "${READTHEDOCS_VIRTUALENV_PATH}"
       install:
-         - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --frozen --all-groups
+         - UV_PROJECT_ENVIRONMENT="${READTHEDOCS_VIRTUALENV_PATH}" uv sync --locked --all-groups
 
 sphinx:
    configuration: doc/source/conf.py
