@@ -4,7 +4,7 @@ from ..types import TensorLike
 
 
 def _scale(x: torch.Tensor, in_min: float, in_max: float, out_min: float, out_max: float) -> torch.Tensor:
-    if in_min == in_max and out_min == out_max:
+    if in_min == out_min and in_max == out_max:
         return x
 
     s = (out_max - out_min) / (in_max - in_min)

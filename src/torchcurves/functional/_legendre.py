@@ -21,15 +21,15 @@ def _clenshaw_segment(
     k0: int,
     reverse: bool = False,
 ) -> tuple[torch.Tensor, torch.Tensor]:
-    count = coeffs_chunk.shape[0]
-    start = count - 1 if reverse else 0
-    stop = -1 if reverse else count
-    step = -1 if reverse else 1
-    for i, idx in enumerate(range(start, stop, step)):
+    # Unbind once so backward assembles coefficient gradients in one operation.
+    coeffs = coeffs_chunk.unbind(0)
+    if reverse:
+        coeffs = coeffs[::-1]
+    for i, coefficient in enumerate(coeffs):
         k = k0 - i
         alpha = (2 * k + 1) / (k + 1)
         beta = (k + 1) / (k + 2)
-        curr_coef = coeffs_chunk[idx].unsqueeze(0)
+        curr_coef = coefficient.unsqueeze(0)
         b1_next = torch.add(torch.addcmul(curr_coef, x_expanded, b1, value=alpha), b2, alpha=-beta)
         b2, b1 = b1, b1_next
     return b1, b2

@@ -8,6 +8,7 @@ from torchcurves.modules._legendre import LegendreCurve
 @pytest.mark.parametrize(
     "batch,curves,dim,degree",
     [
+        (1, 32, 64, 64),
         (256, 32, 64, 8),
         (256, 64, 64, 16),
     ],
@@ -34,6 +35,7 @@ def test_legendre_forward(benchmark, device, sync, batch, curves, dim, degree):
 @pytest.mark.parametrize(
     "batch,curves,dim,degree",
     [
+        (1, 32, 64, 64),
         (128, 32, 64, 8),
         (128, 64, 64, 16),
     ],
@@ -66,6 +68,7 @@ def test_legendre_backward_params(benchmark, device, sync, batch, curves, dim, d
 @pytest.mark.parametrize(
     "batch,curves,dim,degree",
     [
+        (1, 32, 64, 64),
         (128, 32, 64, 8),
         (128, 64, 64, 16),
     ],
@@ -100,6 +103,7 @@ def test_legendre_backward_inputs(benchmark, device, sync, batch, curves, dim, d
 @pytest.mark.parametrize(
     "batch,curves,dim,degree",
     [
+        (1, 32, 64, 64),
         (128, 32, 64, 8),
         (128, 64, 64, 16),
     ],

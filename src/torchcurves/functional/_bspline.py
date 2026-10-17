@@ -71,7 +71,11 @@ class _BSplineFunction(torch.autograd.Function):
     def _gather_control_points(control_points: torch.Tensor, cp_indices: torch.Tensor) -> torch.Tensor:
         flat_indices = _BSplineFunction._flat_control_point_indices(cp_indices, control_points.shape[1])
         flat_control_points = control_points.reshape(-1, control_points.shape[-1])
-        return flat_control_points[flat_indices]
+        # Gather rows with index_select to avoid advanced-indexing overhead. It requires
+        # 1D indices, so flatten them and restore (samples, curves, degree + 1, dim).
+        return flat_control_points.index_select(0, flat_indices.reshape(-1)).view(
+            *flat_indices.shape, control_points.shape[-1]
+        )
 
     @staticmethod
     def _basis_control_matmul(basis: torch.Tensor, gathered_control_points: torch.Tensor) -> torch.Tensor:
