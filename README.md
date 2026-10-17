@@ -12,7 +12,7 @@
 [![torchcurves-backend](https://github.com/alexshtf/torchcurves/actions/workflows/tests.yml/badge.svg)](https://github.com/alexshtf/torchcurves/actions/workflows/tests.yml)
 [![PyPI downloads](https://img.shields.io/pypi/dm/torchcurves)](https://pypi.org/project/torchcurves/)
 [![PyPI](https://img.shields.io/pypi/v/torchcurves)](https://pypi.org/project/torchcurves/)
-![Python version](https://img.shields.io/badge/python-3.9+-important)
+![Python version](https://img.shields.io/badge/python-3.12+-important)
 
 </div>
 
@@ -59,6 +59,8 @@ For more information:
 - **Efficient numerics**: Clenshaw recursion for polynomials, Cox-DeBoor for splines.
 
 ## Installation
+Requires Python 3.12 or newer and PyTorch 2.9 or newer.
+
 With pip:
 ```bash
 pip install torchcurves
@@ -361,13 +363,13 @@ git clone https://github.com/alexshtf/torchcurves.git
 cd torchcurves
 
 # Create virtual environment and install
-uv venv
 uv sync --all-groups
 ```
 
-Local development defaults to Python 3.9 via `.python-version`, matching the minimum
+Local development defaults to Python 3.12 via `.python-version`, matching the minimum
 supported version so compatibility issues are caught during development. CI explicitly
-selects each Python version in its test matrix to verify support across Python 3.9–3.13.
+selects each Python version in its test matrix to verify support across Python 3.12–3.14.
+PyTorch 2.9 or newer is required on all supported Python versions.
 
 ## Running Tests
 

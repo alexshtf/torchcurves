@@ -29,6 +29,6 @@ repos:
       types: [python]
 
 - repo: https://github.com/astral-sh/uv-pre-commit
-  rev: 0.5.25
+  rev: 0.13.0
   hooks:
     - id: uv-lock
