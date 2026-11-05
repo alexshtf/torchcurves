@@ -16,18 +16,18 @@
 
 </div>
 
-A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients, such as a B-spline curve with learnable control points, for KANs, continuous embeddings, and shape constraints.
+A PyTorch library for _vectorized_ and _differentiable_ parametric curves with learnable coefficients. Give each numerical feature its own curve, and a single call of the form `Y = curves(X)` turns every scalar in the batch into a point on its feature’s curve.
 
 <div align="center">
-    <p><b>Use cases</b></p>
+    <p><b>The essence of torchcurves</b></p>
     <picture>
-        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_dark.png">
-        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
-        <img width="100%" alt="Torchcurves Usecases" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/features_to_points_dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/features_to_points_light.png">
+        <img width="100%" alt="Torchcurves Usecases" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/features_to_points_light.png">
     </picture>
 </div>
 
-Turns out all the above use cases have one thing in common: they can all be expressed using learnable parametric curves, and that is exactly what this library provides.
+We support curves parametrized by the B-Spline and Legendre bases, with various modifications to support unbounded domains.
 
 ## Learn
 A simple "hello world" example: evaluate three two-dimensional B-spline curves at four points:
@@ -71,6 +71,16 @@ uv add torchcurves
 ```
 
 ## Use cases
+The parametrized curves abstraction serves many uses cases.
+
+<div align="center">
+    <p><b>Use cases</b></p>
+    <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_dark.png">
+        <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
+        <img width="100%" alt="Torchcurves Usecases" src="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/usecases_light.png">
+    </picture>
+</div>
 
 There are examples in the `doc/source/examples` directory showing how to build models using
 this library. Here we show some simple code snippets to appreciate the library.
