@@ -16,10 +16,10 @@
 
 </div>
 
-A PyTorch module for _vectorized_ and _differentiable_ parametric curves with learnable coefficients. Give each numerical feature its own curve, and a single call of the form `Y = curves(X)` turns every scalar in the batch into a point on its feature’s curve.
+A PyTorch library for _vectorized_ and _differentiable_ parametric curves with learnable coefficients. Give each numerical feature its own curve, and a single call of the form `Y = curves(X)` turns every scalar in the batch into a point on its feature’s curve.
 
 <div align="center">
-    <p><b>Use cases</b></p>
+    <p><b>The essence of torchcurves</b></p>
     <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/features_to_points_dark.png">
         <source media="(prefers-color-scheme: light)" srcset="https://raw.githubusercontent.com/alexshtf/torchcurves/master/assets/features_to_points_light.png">
