@@ -8,8 +8,8 @@
     "matplotlib": "3.11.2",
     "efficient-kan": "0.1.0"
   },
-  "torchcurves_commit": "84bd248b9cf3c133ddefb4bc7b7c296544b46395",
-  "torchcurves_dirty": true,
+  "torchcurves_commit": "3a20bc6f3fccffaccc42e7083dac98debfe5b611",
+  "torchcurves_dirty": false,
   "efficient_kan_commit": "7b6ce1c87f18c8bc90c208f6b494042344216b11",
   "cpu": "Intel(R) Core(TM) Ultra 7 356H",
   "gpu": "NVIDIA RTX PRO 500 Blackwell Generation Laptop GPU",
