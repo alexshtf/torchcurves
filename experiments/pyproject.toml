@@ -1,0 +1,21 @@
+[project]
+name = "torchcurves-experiments"
+version = "0.1.0"
+requires-python = ">=3.12"
+dependencies = [
+    "torchcurves",
+    "numpy>=2.0",
+    "scipy>=1.14",
+    "matplotlib>=3.9",
+    "efficient-kan",
+]
+
+[tool.uv.sources]
+torchcurves = { path = "..", editable = true }
+efficient-kan = { git = "https://github.com/Blealtan/efficient-kan.git", rev = "7b6ce1c87f18c8bc90c208f6b494042344216b11" }
+
+[tool.uv]
+package = false
+
+[dependency-groups]
+dev = ["pytest>=8"]

@@ -1,0 +1,1 @@
+CPU evaluation of independent vector-valued Legendre and cubic B-spline curves. Outputs have dimension 16; each scalar output uses 16 coefficients. Float64, one CPU thread. Bands show interquartile ranges over 5 measurements. The SciPy comparison evaluates one vector-valued spline object per curve.
