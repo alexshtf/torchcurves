@@ -118,11 +118,24 @@ class RecordingLinear(torch.nn.Linear):
 def test_training_blocks_restore_state_and_alternate() -> None:
     torch.manual_seed(SEED)
     history = []
+    reports = []
     models = {name: RecordingLinear(name, history) for name in ("first", "second")}
-    times = measure_blocks(models, torch.ones(2, 1), torch.zeros(2, 1), warmup=2, repeats=3, steps=2)
+    times = measure_blocks(
+        models, torch.ones(2, 1), torch.zeros(2, 1), warmup=2, repeats=3, steps=2, report=reports.append
+    )
     measured = history[4:]  # Two warm-up steps for each model.
     assert [name for name, _ in measured[::2]] == ["first", "second", "second", "first", "first", "second"]
     assert all(len(values) == 3 for values in times.values())
+    assert reports == [
+        "first warm-up",
+        "second warm-up",
+        "first block 1/3",
+        "second block 1/3",
+        "second block 2/3",
+        "first block 2/3",
+        "first block 3/3",
+        "second block 3/3",
+    ]
     for name in models:
         weights = torch.stack([weight for implementation, weight in measured if implementation == name]).reshape(3, 2)
         torch.testing.assert_close(weights, weights[0].expand_as(weights), rtol=0, atol=0)

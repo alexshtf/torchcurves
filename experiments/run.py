@@ -26,6 +26,7 @@ def main() -> None:
         for name, runner in (("curves", run_curves), ("kan", run_kan)):
             save(directory, name, runner())
 
+    print("Rendering figures...", flush=True)
     render(directory)
     print(f"Wrote {args.mode} results to {directory}")
 

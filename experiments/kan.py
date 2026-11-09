@@ -4,7 +4,7 @@ import copy
 import time
 from itertools import pairwise, product
 
-from common import SEED
+from common import SEED, progress
 
 # isort: split
 import torch
@@ -55,11 +55,15 @@ def check_finite(model, loss) -> None:
             raise ValueError("Training produced a non-finite parameter or gradient")
 
 
-def measure_blocks(models, inputs, targets, *, warmup=WARMUP, repeats=REPEATS, steps=STEPS) -> dict[str, list[float]]:
+def measure_blocks(
+    models, inputs, targets, *, warmup=WARMUP, repeats=REPEATS, steps=STEPS, report=None
+) -> dict[str, list[float]]:
     """Warm up, then time alternating blocks from independent copies of the warmed state."""
     runs = {name: (model, adam(model)) for name, model in models.items()}
     states = {}
     for name, (model, optimizer) in runs.items():
+        if report is not None:
+            report(f"{name} warm-up")
         for _ in range(warmup):
             loss = train_step(model, optimizer, inputs, targets)
         check_finite(model, loss)
@@ -69,6 +73,8 @@ def measure_blocks(models, inputs, targets, *, warmup=WARMUP, repeats=REPEATS, s
     for repeat in range(repeats):
         order = runs.items() if repeat % 2 == 0 else reversed(runs.items())
         for name, (model, optimizer) in order:
+            if report is not None:
+                report(f"{name} block {repeat + 1}/{repeats}")
             # Adam updates its state tensors in place; never hand it the saved snapshot.
             model_state, optimizer_state = copy.deepcopy(states[name])
             model.load_state_dict(model_state)
@@ -86,14 +92,14 @@ def measure_blocks(models, inputs, targets, *, warmup=WARMUP, repeats=REPEATS, s
 
 
 def measure_configuration(
-    coefficients: int, hidden_width: int, batch: int, device: str
+    coefficients: int, hidden_width: int, batch: int, device: str, *, report=None
 ) -> list[tuple[dict, list[float]]]:
     seed = SEED + batch + hidden_width + coefficients
     torch.manual_seed(seed)
     models = build_models(coefficients, hidden_width, device)
     inputs = torch.empty(batch, INPUT_WIDTH, device=device).uniform_(-1, 1)
     targets = torch.randn(batch, OUTPUT_WIDTH, device=device)
-    times = measure_blocks(models, inputs, targets)
+    times = measure_blocks(models, inputs, targets, report=report)
     measurements = []
     for name, values in times.items():
         config = {
@@ -116,6 +122,15 @@ def measure_configuration(
 def run() -> list[tuple[dict, list[float]]]:
     measurements = []
     devices = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
-    for device, coefficients, hidden_width, batch in product(devices, COEFFICIENTS, HIDDEN_WIDTHS, BATCHES):
-        measurements.extend(measure_configuration(coefficients, hidden_width, batch, device))
+    configurations = list(product(devices, COEFFICIENTS, HIDDEN_WIDTHS, BATCHES))
+    with progress(len(configurations), "KAN") as bar:
+        for device, coefficients, hidden_width, batch in configurations:
+            bar.set_description_str(f"KAN {device.upper()} B={batch} W={hidden_width} K={coefficients}", refresh=False)
+            bar.set_postfix_str("initializing")
+            measurements.extend(
+                measure_configuration(coefficients, hidden_width, batch, device, report=bar.set_postfix_str)
+            )
+            bar.update()
+        bar.set_description_str("KAN", refresh=False)
+        bar.set_postfix_str("done")
     return measurements

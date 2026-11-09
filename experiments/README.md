@@ -12,6 +12,11 @@ make run
 
 `make render` regenerates the figures from saved measurements.
 
+Each study displays one terminal progress bar with completed configurations,
+elapsed time, the current configuration, and its implementation and timing phase.
+Progress updates happen outside timed measurements. No ETA is shown; bars are
+disabled when output is not a terminal.
+
 The tests cover evaluator values, KAN training and Adam updates,
 restoration of training blocks, heatmap ratios and layout, and result exports.
 `full` runs every specified configuration and writes raw

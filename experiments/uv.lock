@@ -1152,6 +1152,7 @@ dependencies = [
     { name = "numpy" },
     { name = "scipy" },
     { name = "torchcurves" },
+    { name = "tqdm" },
 ]
 
 [package.dev-dependencies]
@@ -1166,6 +1167,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=2.0" },
     { name = "scipy", specifier = ">=1.14" },
     { name = "torchcurves", editable = "../" },
+    { name = "tqdm", specifier = ">=4.67" },
 ]
 
 [package.metadata.requires-dev]

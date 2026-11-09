@@ -3,7 +3,7 @@
 from functools import partial
 from itertools import product
 
-from common import SEED
+from common import SEED, progress
 
 # isort: split
 import numpy as np
@@ -47,16 +47,22 @@ def evaluators(family: str, batch: int, count: int, dimension: int, coefficients
 def run() -> list[tuple[dict, list[float]]]:
     measurements = []
     rng = np.random.default_rng(SEED)
+    configurations = list(product(("Legendre", "B-spline"), COUNTS, DIMENSIONS, BATCHES, COEFFICIENTS))
 
-    with torch.inference_mode():
-        for family, count, dimension, batch, coefficients in product(
-            ("Legendre", "B-spline"), COUNTS, DIMENSIONS, BATCHES, COEFFICIENTS
-        ):
+    with torch.inference_mode(), progress(len(configurations), "Curves") as bar:
+        for family, count, dimension, batch, coefficients in configurations:
+            bar.set_description_str(
+                f"Curves {family} B={batch} C={count} D={dimension} K={coefficients}", refresh=False
+            )
+            bar.set_postfix_str("initializing")
             candidate, reference, other = evaluators(family, batch, count, dimension, coefficients, rng)
 
             for label, evaluator in (("TorchCurves", candidate), (other, reference)):
                 timer = Timer(stmt="evaluate()", globals={"evaluate": evaluator}, num_threads=1)
-                times = [timer.blocked_autorange(min_run_time=0.5).median * 1000 for _ in range(5)]
+                times = []
+                for repeat in range(5):
+                    bar.set_postfix_str(f"{label} repeat {repeat + 1}/5")
+                    times.append(timer.blocked_autorange(min_run_time=0.5).median * 1000)
                 config = {
                     "family": family,
                     "batch": batch,
@@ -71,4 +77,7 @@ def run() -> list[tuple[dict, list[float]]]:
                     "seed": SEED,
                 }
                 measurements.append((config, times))
+            bar.update()
+        bar.set_description_str("Curves", refresh=False)
+        bar.set_postfix_str("done")
     return measurements

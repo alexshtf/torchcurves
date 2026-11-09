@@ -8,6 +8,8 @@ import subprocess
 from importlib.metadata import version
 from pathlib import Path
 
+from tqdm import tqdm
+
 THREAD_VARIABLES = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS")
 
 # Native thread limits must be set before NumPy or PyTorch is imported.
@@ -21,6 +23,16 @@ import torch  # noqa: E402
 ROOT = Path(__file__).resolve().parents[1]
 SEED = 2026
 BASELINE_COMMIT = "7b6ce1c87f18c8bc90c208f6b494042344216b11"
+
+
+def progress(total: int, study: str):
+    return tqdm(
+        total=total,
+        desc=study,
+        bar_format="{desc}: {n_fmt}/{total_fmt} |{bar}| {elapsed}{postfix}",
+        dynamic_ncols=True,
+        disable=None,
+    )
 
 
 def prepare() -> None:

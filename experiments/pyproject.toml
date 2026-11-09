@@ -8,6 +8,7 @@ dependencies = [
     "scipy>=1.14",
     "matplotlib>=3.9",
     "efficient-kan",
+    "tqdm>=4.67",
 ]
 
 [tool.uv.sources]
