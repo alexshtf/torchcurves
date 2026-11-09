@@ -10,18 +10,43 @@ From this directory, run the tests and full study with:
 make run
 ```
 
-`make render` regenerates the figure and tables from saved measurements.
+`make render` regenerates the figures and tables from saved measurements.
 
 The tests cover evaluator values, KAN training and Adam updates,
-restoration of training blocks, and result exports.
+restoration of training blocks, heatmap ratios and layout, and result exports.
 `full` runs every specified configuration and writes raw
-measurements, summaries, metadata, the curve figure, and the KAN table to
-`results/full/`. `render` rebuilds the figure and tables from saved summaries.
+measurements, summaries, metadata, the curve figures, and the KAN table to
+`results/full/`. `render` rebuilds the figures and tables from saved summaries.
 The full run can take a long time, especially the larger KAN configurations.
 CUDA results are marked unavailable when no CUDA device is accessible.
 
-The curve figure compares complete evaluator calls, including SciPy's loop over
-one vector-valued spline per curve.
+The curve study measures the Cartesian product of four dimensions for each family:
+
+| Dimension | Values |
+| --- | --- |
+| Batch size B | 1, 256, 2048 |
+| Curve count C | 1, 16, 64 |
+| Output dimension D | 1, 16, 64 |
+| Coefficients per scalar output K | 4, 16, 64 |
+
+That gives 81 configurations per family, each measured with TorchCurves and
+NumPy (Legendre) or SciPy (B-splines). Legendre degree is K - 1. B-splines remain
+cubic, with K + 4 entries in the knot vector including repeated boundary knots.
+Timing covers complete evaluator calls, including SciPy's loop over one
+vector-valued spline per curve. Inputs and evaluator objects are constructed
+outside timing. All curve measurements use float64 and one CPU thread.
+
+`legendre.pdf` and `bspline.pdf` (also PNG) contain separate annotated heatmaps.
+Panel rows show curve count and panel columns show output dimension; within each
+panel, rows show batch size and columns show coefficient count. Cell values are
+median TorchCurves time divided by median reference time, rounded to two
+significant digits. Below 1 means TorchCurves is faster. Both figures use the same
+logarithmic color scale, centered at 1 and spanning 0.01–100; numbers retain ratios
+outside that range. Each figure has a matching `_caption.md` file. Raw timings and
+summaries retain absolute milliseconds and all four dimensions.
+
+Rerun `make run` to collect the expanded grid; earlier measurements have only one
+output dimension and coefficient count.
 
 The KAN study compares each library's idiomatic construction:
 

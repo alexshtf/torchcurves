@@ -2,17 +2,19 @@
 
 import csv
 import json
+from itertools import product
 
 from common import SEED, prepare, save
 
 # isort: split
+import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 import torch
-from curves import check_outputs, evaluators
+from curves import evaluators
 from efficient_kan import KAN
 from kan import WIDTHS, adam, build_models, check_finite, measure_blocks, train_step
-from render import table_rows, write_table
+from render import curve_figure, plot_curves, table_rows, write_table
 
 import torchcurves as tc
 
@@ -20,12 +22,56 @@ prepare()
 
 
 @pytest.mark.parametrize("family", ("Legendre", "B-spline"))
-@pytest.mark.parametrize("count", (1, 32))
-@pytest.mark.parametrize("batch", (1, 32))
-def test_curve_references(family, count, batch) -> None:
+@pytest.mark.parametrize("batch,count,dimension", ((1, 1, 1), (5, 3, 7)))
+@pytest.mark.parametrize("coefficients", (4, 16, 64))
+def test_curve_references(family, batch, count, dimension, coefficients) -> None:
     with torch.inference_mode():
-        candidate, reference, _ = evaluators(family, batch, count, np.random.default_rng(SEED))
-        check_outputs(candidate, reference, batch, count)
+        candidate, reference, _ = evaluators(family, batch, count, dimension, coefficients, np.random.default_rng(SEED))
+        actual = candidate()
+        expected = torch.from_numpy(reference())
+        assert actual.shape == expected.shape == (batch, count, dimension)
+        torch.testing.assert_close(actual, expected, rtol=1e-10, atol=1e-12)
+
+
+def test_curve_heatmaps(tmp_path) -> None:
+    ratios = np.array([[0.01, 0.1, 1], [3, 10, 100]])
+    results = []
+    for family, reference in (("Legendre", "NumPy"), ("B-spline", "SciPy")):
+        reference_ms = 2 if family == "Legendre" else 5
+        for count, dimension, (row, batch), (column, coefficients) in product(
+            (1, 3), (1, 7), enumerate((1, 5)), enumerate((4, 16, 64))
+        ):
+            config = {
+                "family": family,
+                "curves": count,
+                "outputs": dimension,
+                "batch": batch,
+                "coefficients": coefficients,
+            }
+            candidate_ms = reference_ms * ratios[row, column] * count * dimension
+            results.extend(
+                [
+                    {**config, "implementation": reference, "median_ms": reference_ms},
+                    {**config, "implementation": "TorchCurves", "median_ms": candidate_ms},
+                ]
+            )
+    results.reverse()  # Rendering must follow axis values, not measurement order.
+
+    for family in ("Legendre", "B-spline"):
+        figure = curve_figure(results, family)
+        for axis, (count, dimension) in zip(figure.axes[:4], product((1, 3), (1, 7)), strict=True):
+            expected = ratios * count * dimension
+            np.testing.assert_allclose(axis.images[0].get_array(), expected)
+            assert [text.get_text() for text in axis.texts] == [f"{value:.2g}" for value in expected.flat]
+            assert [tick.get_text() for tick in axis.get_xticklabels()] == ["4", "16", "64"]
+            assert (axis.images[0].norm.vmin, axis.images[0].norm.vmax) == (0.01, 100)
+        plt.close(figure)
+
+    plot_curves(results, tmp_path)
+    for stem in ("legendre", "bspline"):
+        for extension in ("pdf", "png"):
+            assert (tmp_path / f"{stem}.{extension}").stat().st_size > 0
+        assert "Panel rows show curve count C" in (tmp_path / f"{stem}_caption.md").read_text()
 
 
 @pytest.mark.parametrize("coefficients", (8, 32))
