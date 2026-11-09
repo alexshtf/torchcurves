@@ -2,15 +2,17 @@
 
 import csv
 import json
+import shlex
+import subprocess
+import sys
 from itertools import product
+from pathlib import Path
 
-from common import SEED, prepare, save
-
-# isort: split
 import matplotlib.pyplot as plt
 import numpy as np
 import pytest
 import torch
+from common import SEED, THREAD_VARIABLES, prepare, save
 from curves import evaluators
 from efficient_kan import KAN
 from kan import INPUT_WIDTH, OUTPUT_WIDTH, adam, build_models, check_finite, measure_blocks, train_step
@@ -19,6 +21,24 @@ from render import curve_figure, kan_figure, plot_curves, plot_kan
 import torchcurves as tc
 
 prepare()
+
+
+@pytest.mark.parametrize("threads", (1, 2))
+def test_make_affinity(threads) -> None:
+    command = "from common import metadata, prepare; import json; prepare(); print(json.dumps(metadata()))"
+    recipe = f"probe:\n\t$(PIN) {shlex.quote(sys.executable)} -c {shlex.quote(command)}\n"
+    result = subprocess.run(
+        ["make", "--silent", "--no-print-directory", "-f", "Makefile", "-f", "-", "probe", f"AFFINITY={threads}"],
+        input=recipe,
+        cwd=Path(__file__).parent,
+        text=True,
+        capture_output=True,
+        check=True,
+    )
+    recorded = json.loads(result.stdout)
+    assert recorded["cpu_affinity"] == list(range(threads))
+    assert recorded["torch_threads"] == threads
+    assert recorded["threads"] == {name: str(threads) for name in THREAD_VARIABLES}
 
 
 @pytest.mark.parametrize("family", ("Legendre", "B-spline"))
@@ -47,6 +67,7 @@ def test_curve_heatmaps(tmp_path) -> None:
                 "outputs": dimension,
                 "batch": batch,
                 "coefficients": coefficients,
+                "threads": 2,
             }
             candidate_ms = reference_ms * ratios[row, column] * count * dimension
             results.extend(
@@ -72,6 +93,7 @@ def test_curve_heatmaps(tmp_path) -> None:
         for extension in ("pdf", "png"):
             assert (tmp_path / f"{stem}.{extension}").stat().st_size > 0
         assert "Panel rows show curve count C" in (tmp_path / f"{stem}_caption.md").read_text()
+        assert "CPU thread limit: 2" in (tmp_path / f"{stem}_caption.md").read_text()
 
 
 @pytest.mark.parametrize("hidden_width,coefficients", ((32, 8), (64, 32), (128, 64)))
@@ -193,7 +215,10 @@ def test_kan_heatmap(devices, tmp_path) -> None:
         assert (axis.images[0].norm.vmin, axis.images[0].norm.vmax) == (0.01, 100)
     plt.close(figure)
 
-    plot_kan(results, {"cpu": "test CPU", "gpu": "test GPU" if "cuda" in devices else None}, tmp_path)
+    plot_kan(
+        results, {"cpu": "test CPU", "gpu": "test GPU" if "cuda" in devices else None, "torch_threads": 2}, tmp_path
+    )
     for extension in ("pdf", "png"):
         assert (tmp_path / f"kan.{extension}").stat().st_size > 0
     assert "[32, W, W, 1]" in (tmp_path / "kan_caption.md").read_text()
+    assert "CPU thread limit: 2" in (tmp_path / "kan_caption.md").read_text()

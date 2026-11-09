@@ -1,4 +1,4 @@
-"""Shared recording and environment setup for the paper experiments."""
+"""Shared recording and settings for the paper experiments."""
 
 import csv
 import json
@@ -8,18 +8,11 @@ import subprocess
 from importlib.metadata import version
 from pathlib import Path
 
+import numpy as np
+import torch
 from tqdm import tqdm
 
-THREAD_VARIABLES = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS", "NUMEXPR_NUM_THREADS")
-
-# Native thread limits must be set before NumPy or PyTorch is imported.
-for name in THREAD_VARIABLES:
-    os.environ[name] = "1"
-os.environ["MPLCONFIGDIR"] = str(Path(__file__).parent / ".cache" / "matplotlib")
-
-import numpy as np  # noqa: E402
-import torch  # noqa: E402
-
+THREAD_VARIABLES = ("OMP_NUM_THREADS", "MKL_NUM_THREADS", "OPENBLAS_NUM_THREADS")
 ROOT = Path(__file__).resolve().parents[1]
 SEED = 2026
 BASELINE_COMMIT = "7b6ce1c87f18c8bc90c208f6b494042344216b11"
@@ -36,7 +29,6 @@ def progress(total: int, study: str):
 
 
 def prepare() -> None:
-    torch.set_num_threads(1)
     torch.backends.cuda.matmul.allow_tf32 = False
     torch.backends.cudnn.allow_tf32 = False
 
@@ -66,7 +58,8 @@ def metadata() -> dict:
         "cpu": cpu_model(),
         "gpu": torch.cuda.get_device_name(0) if torch.cuda.is_available() else None,
         "cuda": torch.version.cuda,
-        "threads": {name: os.environ[name] for name in THREAD_VARIABLES},
+        "cpu_affinity": sorted(os.sched_getaffinity(0)),
+        "threads": {name: os.environ.get(name) for name in THREAD_VARIABLES},
         "torch_threads": torch.get_num_threads(),
         "seed": SEED,
     }

@@ -96,7 +96,7 @@ def curve_figure(results: list[dict], family: str):
 def plot_curves(results: list[dict], directory: Path) -> None:
     for family, stem in (("Legendre", "legendre"), ("B-spline", "bspline")):
         figure = curve_figure(results, family)
-        save_figure(figure, directory, stem, curve_caption(family))
+        save_figure(figure, directory, stem, curve_caption(family, results[0]["threads"]))
 
 
 def kan_figure(results: list[dict]):
@@ -157,7 +157,8 @@ def kan_caption(metadata: dict, example: dict) -> str:
         "EfficientKAN uses its KAN model with SiLU branches, trainable spline scaling, "
         "extended knots, and no added clamp. "
         "Each library initializes its own parameters. Architectures and parameter counts differ. "
-        "Both use the same generated data, MSE, and Adam with fixed grids. Float32 eager execution; one CPU thread. "
+        "Both use the same generated data, MSE, and Adam with fixed grids. Float32 eager execution; "
+        f"CPU thread limit: {metadata['torch_threads']}. "
         f"CPU: {metadata['cpu']}; GPU: {metadata['gpu'] or 'N/A (CUDA unavailable)'}. "
         "These timings describe step cost, not predictive quality or convergence."
     )
@@ -167,7 +168,7 @@ def plot_kan(results: list[dict], metadata: dict, directory: Path) -> None:
     save_figure(kan_figure(results), directory, "kan", kan_caption(metadata, results[0]))
 
 
-def curve_caption(family: str) -> str:
+def curve_caption(family: str, threads: int) -> str:
     representation = (
         "Legendre expansions have degree K - 1 and are compared with NumPy."
         if family == "Legendre"
@@ -180,8 +181,8 @@ def curve_caption(family: str) -> str:
         "output K. Each cell is median TorchCurves time divided by median reference time, rounded to two significant "
         "digits; values below 1 mean TorchCurves is faster. Medians use five timing measurements. "
         "The logarithmic color scale is shared across both figures and centered at 1; ratios outside [0.01, 100] "
-        "use the endpoint colors. Float64, one CPU thread; input and evaluator construction are excluded from timing. "
-        + representation
+        f"use the endpoint colors. Float64, CPU thread limit: {threads}; "
+        "input and evaluator construction are excluded from timing. " + representation
     )
 
 

@@ -7,10 +7,19 @@ the library's package metadata. The `efficient-kan` source is pinned to commit
 From this directory, run the tests and full study with:
 
 ```sh
-make run
+make run AFFINITY=4
 ```
 
-`make render` regenerates the figures from saved measurements.
+`AFFINITY=k` pins the test and experiment processes to logical CPUs `0` through
+`k-1` using Linux `taskset`, and limits the numerical thread pools to `k` threads.
+The default is 1. Make exports `OMP_NUM_THREADS`, `MKL_NUM_THREADS`, and
+`OPENBLAS_NUM_THREADS` before Python starts; Python does not override them.
+PyTorch's benchmark timer inherits the effective thread count instead of its
+usual one-thread default. Metadata records the actual CPU affinity and thread
+settings. Choose CPUs available to the process; this requires Linux and `taskset`.
+
+`make test AFFINITY=4` runs only the tests. `make render` regenerates the figures
+from saved measurements, using the recorded thread count in their captions.
 
 Each study displays one terminal progress bar with completed configurations,
 elapsed time, the current configuration, and its implementation and timing phase.
@@ -39,7 +48,7 @@ NumPy (Legendre) or SciPy (B-splines). Legendre degree is K - 1. B-splines remai
 cubic, with K + 4 entries in the knot vector including repeated boundary knots.
 Timing covers complete evaluator calls, including SciPy's loop over one
 vector-valued spline per curve. Inputs and evaluator objects are constructed
-outside timing. All curve measurements use float64 and one CPU thread.
+outside timing. All curve measurements use float64 and the configured CPU thread limit.
 
 `legendre.pdf` and `bspline.pdf` (also PNG) contain separate annotated heatmaps.
 Panel rows show curve count and panel columns show output dimension; within each

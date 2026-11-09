@@ -1,9 +1,20 @@
-.PHONY: run render
+AFFINITY ?= 1
 
-run:
+export OMP_NUM_THREADS := $(AFFINITY)
+export MKL_NUM_THREADS := $(AFFINITY)
+export OPENBLAS_NUM_THREADS := $(AFFINITY)
+export MPLCONFIGDIR := $(CURDIR)/.cache/matplotlib
+
+PIN = taskset --cpu-list 0-$$(( $(AFFINITY) - 1 ))
+
+.PHONY: run test render
+
+run: test
+	$(PIN) uv run --locked python run.py full
+
+test:
 	uv sync --locked
-	uv run --locked pytest
-	uv run --locked python run.py full
+	$(PIN) uv run --locked pytest
 
 render:
-	uv run --locked python run.py render
+	$(PIN) uv run --locked python run.py render

@@ -5,8 +5,6 @@ import json
 from pathlib import Path
 
 from common import metadata, prepare, save
-
-# isort: split
 from curves import run as run_curves
 from kan import run as run_kan
 from render import render

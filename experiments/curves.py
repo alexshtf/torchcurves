@@ -3,11 +3,9 @@
 from functools import partial
 from itertools import product
 
-from common import SEED, progress
-
-# isort: split
 import numpy as np
 import torch
+from common import SEED, progress
 from scipy.interpolate import BSpline
 from torch.utils.benchmark import Timer
 
@@ -47,6 +45,7 @@ def evaluators(family: str, batch: int, count: int, dimension: int, coefficients
 def run() -> list[tuple[dict, list[float]]]:
     measurements = []
     rng = np.random.default_rng(SEED)
+    threads = torch.get_num_threads()
     configurations = list(product(("Legendre", "B-spline"), COUNTS, DIMENSIONS, BATCHES, COEFFICIENTS))
 
     with torch.inference_mode(), progress(len(configurations), "Curves") as bar:
@@ -58,7 +57,8 @@ def run() -> list[tuple[dict, list[float]]]:
             candidate, reference, other = evaluators(family, batch, count, dimension, coefficients, rng)
 
             for label, evaluator in (("TorchCurves", candidate), (other, reference)):
-                timer = Timer(stmt="evaluate()", globals={"evaluate": evaluator}, num_threads=1)
+                # Timer defaults to one thread; preserve the runtime's configured limit.
+                timer = Timer(stmt="evaluate()", globals={"evaluate": evaluator}, num_threads=threads)
                 times = []
                 for repeat in range(5):
                     bar.set_postfix_str(f"{label} repeat {repeat + 1}/5")
@@ -73,7 +73,7 @@ def run() -> list[tuple[dict, list[float]]]:
                     "implementation": label,
                     "device": "cpu",
                     "dtype": "float64",
-                    "threads": 1,
+                    "threads": threads,
                     "seed": SEED,
                 }
                 measurements.append((config, times))

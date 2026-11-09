@@ -4,11 +4,9 @@ import copy
 import time
 from itertools import pairwise, product
 
-from common import SEED, progress
-
-# isort: split
 import torch
 import torch.nn.functional as F  # noqa: N812
+from common import SEED, progress
 from efficient_kan import KAN
 
 import torchcurves as tc
@@ -110,7 +108,7 @@ def measure_configuration(
             "parameters": sum(parameter.numel() for parameter in models[name].parameters()),
             "device": device,
             "dtype": "float32",
-            "threads": 1 if device == "cpu" else None,
+            "threads": torch.get_num_threads(),
             "seed": seed,
             "warmup_steps": WARMUP,
             "steps_per_block": STEPS,
