@@ -60,6 +60,7 @@ Thumbs.db
 # UV
 .ruff_cache
 experiments/.cache/
+experiments/results/
 
 # Sphinx
 doc/source/generated
