@@ -1,6 +1,7 @@
 """Create the paper figure and tables from saved measurements."""
 
 import json
+from itertools import product
 from pathlib import Path
 
 import matplotlib
@@ -8,55 +9,49 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt
 
-COLORS = {"TorchCurves": "#2764a5", "NumPy": "#cf6c38", "SciPy": "#cf6c38"}
+plt.style.use("tableau-colorblind10")
+
 HEADER = ("Coefficients", "Batch", "CPU TorchCurves", "CPU efficient-kan", "GPU TorchCurves", "GPU efficient-kan")
 
 
 def plot_curves(results: list[dict], directory: Path) -> None:
-    figure, axes = plt.subplots(2, 2, figsize=(9, 6), sharex=True)
-    for row, family in enumerate(("Legendre", "B-spline")):
+    figure, axes = plt.subplots(2, 2, figsize=(9, 6), sharex=True, layout="constrained")
+    panels = product(("Legendre", "B-spline"), (1, 32))
+
+    for axis, (family, count) in zip(axes.flat, panels, strict=True):
         reference = "NumPy" if family == "Legendre" else "SciPy"
-        for column, count in enumerate((1, 32)):
-            axis = axes[row, column]
-            for implementation in ("TorchCurves", reference):
-                points = sorted(
-                    (
-                        item
-                        for item in results
-                        if item["family"] == family
-                        and item["curves"] == count
-                        and item["implementation"] == implementation
-                    ),
-                    key=lambda item: item["batch"],
-                )
-                if not points:
-                    continue
-                batches = [item["batch"] for item in points]
-                axis.plot(
-                    batches,
-                    [item["median_ms"] for item in points],
-                    marker="o",
-                    color=COLORS[implementation],
-                    label=implementation,
-                )
-                axis.fill_between(
-                    batches,
-                    [item["q1_ms"] for item in points],
-                    [item["q3_ms"] for item in points],
-                    color=COLORS[implementation],
-                    alpha=0.16,
-                )
-            axis.set(xscale="log", yscale="log", title=f"{family} · {count} curve{'s' if count > 1 else ''}")
-            axis.grid(alpha=0.2)
-            if row == 1:
-                axis.set_xlabel("Batch size")
-            if column == 0:
-                axis.set_ylabel("Milliseconds per call")
+        for implementation in ("TorchCurves", reference):
+            points = sorted(
+                (
+                    item
+                    for item in results
+                    if (item["family"], item["curves"], item["implementation"]) == (family, count, implementation)
+                ),
+                key=lambda item: item["batch"],
+            )
+            batches = [item["batch"] for item in points]
+            (line,) = axis.plot(batches, [item["median_ms"] for item in points], marker="o", label=implementation)
+            axis.fill_between(
+                batches,
+                [item["q1_ms"] for item in points],
+                [item["q3_ms"] for item in points],
+                color=line.get_color(),
+                alpha=0.16,
+            )
+        axis.set(xscale="log", yscale="log", title=f"{family} · {count} curve{'s' if count > 1 else ''}")
+        axis.grid(alpha=0.2)
+
+    figure.supxlabel("Batch size")
+    figure.supylabel("Milliseconds per call")
     axes[0, 0].legend(frameon=False)
-    figure.tight_layout()
     for extension in ("pdf", "png"):
         figure.savefig(directory / f"curves.{extension}", dpi=200)
     plt.close(figure)
+
+
+def format_time(item: dict, other: dict) -> str:
+    value = f"{item['median_ms']:.3f}"
+    return f"**{value}**" if item["q3_ms"] < other["q1_ms"] else value
 
 
 def formatted_pair(results: dict, coefficients: int, batch: int, device: str) -> tuple[str, str]:
@@ -65,41 +60,37 @@ def formatted_pair(results: dict, coefficients: int, batch: int, device: str) ->
     if torchcurves is None or baseline is None:
         return "N/A", "N/A"
 
-    def format_time(item: dict, faster: bool) -> str:
-        value = f"{item['median_ms']:.3f}"
-        return f"**{value}**" if faster else value
-
-    return (
-        format_time(torchcurves, torchcurves["q3_ms"] < baseline["q1_ms"]),
-        format_time(baseline, baseline["q3_ms"] < torchcurves["q1_ms"]),
-    )
+    return format_time(torchcurves, baseline), format_time(baseline, torchcurves)
 
 
 def table_rows(results: list[dict]) -> list[tuple[str, ...]]:
     lookup = {(item["coefficients"], item["batch"], item["device"], item["implementation"]): item for item in results}
     rows = []
-    for coefficients in (8, 32):
-        for batch in (64, 256, 1024):
-            rows.append(
-                (
-                    str(coefficients),
-                    str(batch),
-                    *formatted_pair(lookup, coefficients, batch, "cpu"),
-                    *formatted_pair(lookup, coefficients, batch, "cuda"),
-                )
+    for coefficients, batch in product((8, 32), (64, 256, 1024)):
+        rows.append(
+            (
+                str(coefficients),
+                str(batch),
+                *formatted_pair(lookup, coefficients, batch, "cpu"),
+                *formatted_pair(lookup, coefficients, batch, "cuda"),
             )
+        )
     return rows
 
 
 def table_caption(metadata: dict, example: dict) -> str:
     return (
-        f"Median milliseconds per training step for a [32, 64, 64, 1] cubic KAN; "
+        "Median milliseconds per training step for a [32, 64, 64, 1] cubic KAN; "
         f"5 blocks of {example['steps_per_block']} steps after {example['warmup_steps']} warm-up steps. "
         "Both models use matched parameters and knots, input clamping, SiLU branches, trainable spline scaling, "
         "MSE, and Adam. Float32 eager execution; one CPU thread. "
         f"CPU: {metadata['cpu']}; GPU: {metadata['gpu'] or 'N/A (CUDA unavailable)'}. "
         "Bold indicates non-overlapping interquartile intervals. Lower is better."
     )
+
+
+def latex_cell(value: str) -> str:
+    return r"\textbf{" + value.strip("*") + "}" if value.startswith("**") else value
 
 
 def write_table(results: list[dict], metadata: dict, directory: Path) -> None:
@@ -109,10 +100,7 @@ def write_table(results: list[dict], metadata: dict, directory: Path) -> None:
     markdown.extend("| " + " | ".join(row) + " |" for row in rows)
     (directory / "kan_table.md").write_text("\n".join(markdown) + "\n\n" + caption + "\n")
 
-    def latex_cell(value: str) -> str:
-        return r"\textbf{" + value.strip("*") + "}" if value.startswith("**") else value
-
-    line_break = " " + "\\" * 2
+    line_break = r" \\"
     latex = [r"\begin{tabular}{rrrrrr}", r"\hline", " & ".join(HEADER) + line_break, r"\hline"]
     latex.extend(" & ".join(latex_cell(value) for value in row) + line_break for row in rows)
     latex.extend((r"\hline", r"\end{tabular}", "% " + caption))

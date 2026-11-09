@@ -12,7 +12,8 @@ make run
 
 `make render` regenerates the figure and tables from saved measurements.
 
-The tests check the evaluator values and matched KAN gradients without timing.
+The tests cover evaluator values, matched KAN gradients and Adam updates,
+restoration of training blocks, and result exports.
 `full` runs every specified configuration and writes raw
 measurements, summaries, metadata, the curve figure, and the KAN table to
 `results/full/`. `render` rebuilds the figure and tables from saved summaries.
