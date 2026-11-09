@@ -80,12 +80,16 @@ def table_rows(results: list[dict]) -> list[tuple[str, ...]]:
 
 def table_caption(metadata: dict, example: dict) -> str:
     return (
-        "Median milliseconds per training step for a [32, 64, 64, 1] cubic KAN; "
+        "Median milliseconds per training step for idiomatic [32, 64, 64, 1] cubic KANs; "
         f"5 blocks of {example['steps_per_block']} steps after {example['warmup_steps']} warm-up steps. "
-        "Both models use matched parameters and knots, input clamping, SiLU branches, trainable spline scaling, "
-        "MSE, and Adam. Float32 eager execution; one CPU thread. "
+        "TorchCurves uses BSplineCurve/Sum layers with clamping and repeated boundary knots. "
+        "EfficientKAN uses its KAN model with SiLU branches, trainable spline scaling, "
+        "extended knots, and no added clamp. "
+        "Each library initializes its own parameters. Architectures and parameter counts differ. "
+        "Both use the same generated data, MSE, and Adam with fixed grids. Float32 eager execution; one CPU thread. "
         f"CPU: {metadata['cpu']}; GPU: {metadata['gpu'] or 'N/A (CUDA unavailable)'}. "
-        "Bold indicates non-overlapping interquartile intervals. Lower is better."
+        "Bold indicates non-overlapping interquartile intervals. Lower is better. "
+        "These timings describe step cost, not predictive quality or convergence."
     )
 
 

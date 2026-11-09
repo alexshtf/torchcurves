@@ -1,4 +1,4 @@
-"""Numerical equivalence, repeated training blocks, and saved paper results."""
+"""Curve agreement, idiomatic KAN training, repeated blocks, and saved results."""
 
 import csv
 import json
@@ -10,8 +10,11 @@ import numpy as np
 import pytest
 import torch
 from curves import check_outputs, evaluators
-from kan import check_match, measure_blocks
+from efficient_kan import KAN
+from kan import WIDTHS, adam, build_models, check_finite, measure_blocks, train_step
 from render import table_rows, write_table
+
+import torchcurves as tc
 
 prepare()
 
@@ -27,17 +30,29 @@ def test_curve_references(family, count, batch) -> None:
 
 @pytest.mark.parametrize("coefficients", (8, 32))
 @pytest.mark.parametrize(
-    "device,dtype",
+    "device",
     (
-        ("cpu", torch.float64),
-        ("cpu", torch.float32),
-        pytest.param(
-            "cuda", torch.float32, marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")
-        ),
+        "cpu",
+        pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")),
     ),
 )
-def test_matched_kan(coefficients, device, dtype) -> None:
-    check_match(coefficients, device, dtype)
+def test_kan_training(coefficients, device) -> None:
+    torch.manual_seed(SEED)
+    models = build_models(coefficients, device)
+    assert type(models["efficient-kan"]) is KAN
+    assert [type(layer) for layer in models["TorchCurves"]] == [tc.BSplineCurve, tc.Sum] * 3
+    assert models["efficient-kan"].layers[0].spline_weight.shape[-1] == coefficients
+    assert models["TorchCurves"][0].n_control_points_per_curve == coefficients
+
+    inputs = torch.empty(4, WIDTHS[0], device=device).uniform_(-1, 1)
+    targets = torch.randn(4, WIDTHS[-1], device=device)
+    for model in models.values():
+        assert model(inputs).shape == targets.shape
+        before = [parameter.detach().clone() for parameter in model.parameters()]
+        loss = train_step(model, adam(model), inputs, targets)
+        check_finite(model, loss)
+        assert all(parameter.grad is not None for parameter in model.parameters())
+        assert any(not torch.equal(old, new) for old, new in zip(before, model.parameters(), strict=True))
 
 
 class RecordingLinear(torch.nn.Linear):
