@@ -13,8 +13,8 @@ import pytest
 import torch
 from curves import evaluators
 from efficient_kan import KAN
-from kan import WIDTHS, adam, build_models, check_finite, measure_blocks, train_step
-from render import curve_figure, plot_curves, table_rows, write_table
+from kan import INPUT_WIDTH, OUTPUT_WIDTH, adam, build_models, check_finite, measure_blocks, train_step
+from render import curve_figure, kan_figure, plot_curves, plot_kan
 
 import torchcurves as tc
 
@@ -74,7 +74,7 @@ def test_curve_heatmaps(tmp_path) -> None:
         assert "Panel rows show curve count C" in (tmp_path / f"{stem}_caption.md").read_text()
 
 
-@pytest.mark.parametrize("coefficients", (8, 32))
+@pytest.mark.parametrize("hidden_width,coefficients", ((32, 8), (64, 32), (128, 64)))
 @pytest.mark.parametrize(
     "device",
     (
@@ -82,16 +82,19 @@ def test_curve_heatmaps(tmp_path) -> None:
         pytest.param("cuda", marks=pytest.mark.skipif(not torch.cuda.is_available(), reason="CUDA unavailable")),
     ),
 )
-def test_kan_training(coefficients, device) -> None:
+def test_kan_training(hidden_width, coefficients, device) -> None:
     torch.manual_seed(SEED)
-    models = build_models(coefficients, device)
+    models = build_models(coefficients, hidden_width, device)
     assert type(models["efficient-kan"]) is KAN
     assert [type(layer) for layer in models["TorchCurves"]] == [tc.BSplineCurve, tc.Sum] * 3
     assert models["efficient-kan"].layers[0].spline_weight.shape[-1] == coefficients
     assert models["TorchCurves"][0].n_control_points_per_curve == coefficients
+    connections = INPUT_WIDTH * hidden_width + hidden_width**2 + hidden_width * OUTPUT_WIDTH
+    assert sum(p.numel() for p in models["TorchCurves"].parameters()) == connections * coefficients
+    assert sum(p.numel() for p in models["efficient-kan"].parameters()) == connections * (coefficients + 2)
 
-    inputs = torch.empty(4, WIDTHS[0], device=device).uniform_(-1, 1)
-    targets = torch.randn(4, WIDTHS[-1], device=device)
+    inputs = torch.empty(4, INPUT_WIDTH, device=device).uniform_(-1, 1)
+    targets = torch.randn(4, OUTPUT_WIDTH, device=device)
     for model in models.values():
         assert model(inputs).shape == targets.shape
         before = [parameter.detach().clone() for parameter in model.parameters()]
@@ -139,18 +142,45 @@ def test_saved_results(tmp_path) -> None:
             assert list(csv.DictReader(file)) == [{key: str(value) for key, value in row.items()} for row in expected]
 
 
-def test_table_marks_only_separated_intervals(tmp_path) -> None:
-    config = {"coefficients": 8, "device": "cpu", "warmup_steps": 50, "steps_per_block": 100}
-    results = [
-        {**config, "batch": 64, "implementation": "TorchCurves", "q1_ms": 0.9, "median_ms": 1, "q3_ms": 1.1},
-        {**config, "batch": 64, "implementation": "efficient-kan", "q1_ms": 2, "median_ms": 2.5, "q3_ms": 3},
-        {**config, "batch": 256, "implementation": "TorchCurves", "q1_ms": 0.8, "median_ms": 1, "q3_ms": 1.6},
-        {**config, "batch": 256, "implementation": "efficient-kan", "q1_ms": 1.1, "median_ms": 1.5, "q3_ms": 2},
-    ]
-    rows = table_rows(results)
-    assert len(rows) == 6
-    assert rows[0] == ("8", "64", "**1.000**", "2.500", "N/A", "N/A")
-    assert rows[1] == ("8", "256", "1.000", "1.500", "N/A", "N/A")
-    write_table(results, {"cpu": "test CPU", "gpu": None}, tmp_path)
-    assert "**1.000**" in (tmp_path / "kan_table.md").read_text()
-    assert r"\textbf{1.000}" in (tmp_path / "kan_table.tex").read_text()
+@pytest.mark.parametrize("devices", (("cpu",), ("cpu", "cuda")))
+def test_kan_heatmap(devices, tmp_path) -> None:
+    ratios = np.array([[0.1, 1], [10, 100]])
+    results = []
+    for device, coefficients, (row, width), (column, batch) in product(
+        devices, (8, 32, 64), enumerate((32, 128)), enumerate((64, 1024))
+    ):
+        config = {
+            "device": device,
+            "coefficients": coefficients,
+            "hidden_width": width,
+            "batch": batch,
+            "warmup_steps": 50,
+            "steps_per_block": 100,
+        }
+        reference_ms = 2 if device == "cpu" else 5
+        ratio = ratios[row, column] * coefficients / 8 * (1 if device == "cpu" else 0.5)
+        results.extend(
+            [
+                {**config, "implementation": "efficient-kan", "median_ms": reference_ms},
+                {**config, "implementation": "TorchCurves", "median_ms": reference_ms * ratio},
+            ]
+        )
+    results.reverse()
+
+    figure = kan_figure(results)
+    for axis, (device, coefficients) in zip(figure.axes[:6], product(("cpu", "cuda"), (8, 32, 64)), strict=True):
+        if device not in devices:
+            assert not axis.images
+            assert [text.get_text() for text in axis.texts] == ["Not measured"]
+            continue
+        expected = ratios * coefficients / 8 * (1 if device == "cpu" else 0.5)
+        np.testing.assert_allclose(axis.images[0].get_array(), expected)
+        assert [text.get_text() for text in axis.texts] == [f"{value:.2g}" for value in expected.flat]
+        assert [tick.get_text() for tick in axis.get_xticklabels()] == ["64", "1024"]
+        assert (axis.images[0].norm.vmin, axis.images[0].norm.vmax) == (0.01, 100)
+    plt.close(figure)
+
+    plot_kan(results, {"cpu": "test CPU", "gpu": "test GPU" if "cuda" in devices else None}, tmp_path)
+    for extension in ("pdf", "png"):
+        assert (tmp_path / f"kan.{extension}").stat().st_size > 0
+    assert "[32, W, W, 1]" in (tmp_path / "kan_caption.md").read_text()

@@ -1,7 +1,6 @@
-"""Create the paper figure and tables from saved measurements."""
+"""Create annotated paper heatmaps from saved measurements."""
 
 import json
-from itertools import product
 from pathlib import Path
 
 import matplotlib
@@ -13,10 +12,8 @@ from matplotlib.colors import LogNorm
 
 plt.style.use("tableau-colorblind10")
 
-HEADER = ("Coefficients", "Batch", "CPU TorchCurves", "CPU efficient-kan", "GPU TorchCurves", "GPU efficient-kan")
 
-
-def draw_heatmap(axis, ratios: np.ndarray, batches: list[int], coefficients: list[int]):
+def draw_heatmap(axis, ratios: np.ndarray, row_values: list[int], column_values: list[int]):
     image = axis.imshow(ratios, cmap="RdBu_r", norm=LogNorm(0.01, 100))
     for (row, column), value in np.ndenumerate(ratios):
         axis.text(
@@ -27,13 +24,31 @@ def draw_heatmap(axis, ratios: np.ndarray, batches: list[int], coefficients: lis
             va="center",
             color="white" if value < 0.1 or value > 10 else "black",
         )
-    axis.set_xticks(range(len(coefficients)), coefficients)
-    axis.set_yticks(range(len(batches)), batches)
+    axis.set_xticks(range(len(column_values)), column_values)
+    axis.set_yticks(range(len(row_values)), row_values)
     axis.tick_params(length=0)
     axis.grid(False)
     for spine in axis.spines.values():
         spine.set_visible(False)
     return image
+
+
+def add_ratio_colorbar(figure, axes, image, reference: str) -> None:
+    colorbar = figure.colorbar(
+        image, ax=axes, location="bottom", shrink=0.8, aspect=40, extend="both", ticks=[0.01, 0.1, 1, 10, 100]
+    )
+    colorbar.ax.set_xticklabels(["0.01×", "0.1×", "1×", "10×", "100×"])
+    colorbar.minorticks_off()
+    colorbar.set_label(
+        f"Median TorchCurves time / median {reference} time\nBelow 1: faster · 1: equal · above 1: slower"
+    )
+
+
+def save_figure(figure, directory: Path, stem: str, caption: str) -> None:
+    for extension in ("pdf", "png"):
+        figure.savefig(directory / f"{stem}.{extension}", dpi=200)
+    plt.close(figure)
+    (directory / f"{stem}_caption.md").write_text(caption + "\n")
 
 
 def curve_figure(results: list[dict], family: str):
@@ -74,86 +89,82 @@ def curve_figure(results: list[dict], family: str):
                 axis.tick_params(labelleft=False)
 
     figure.suptitle(f"{family} curves · TorchCurves vs {reference}")
-    colorbar = figure.colorbar(
-        image, ax=axes, location="bottom", shrink=0.8, aspect=40, extend="both", ticks=[0.01, 0.1, 1, 10, 100]
-    )
-    colorbar.ax.set_xticklabels(["0.01×", "0.1×", "1×", "10×", "100×"])
-    colorbar.minorticks_off()
-    colorbar.set_label(
-        f"Median TorchCurves time / median {reference} time\nBelow 1: faster · 1: equal · above 1: slower"
-    )
+    add_ratio_colorbar(figure, axes, image, reference)
     return figure
 
 
 def plot_curves(results: list[dict], directory: Path) -> None:
     for family, stem in (("Legendre", "legendre"), ("B-spline", "bspline")):
         figure = curve_figure(results, family)
-        for extension in ("pdf", "png"):
-            figure.savefig(directory / f"{stem}.{extension}", dpi=200)
-        plt.close(figure)
-        (directory / f"{stem}_caption.md").write_text(curve_caption(family) + "\n")
+        save_figure(figure, directory, stem, curve_caption(family))
 
 
-def format_time(item: dict, other: dict) -> str:
-    value = f"{item['median_ms']:.3f}"
-    return f"**{value}**" if item["q3_ms"] < other["q1_ms"] else value
+def kan_figure(results: list[dict]):
+    """Show devices × coefficient counts, with width × batch size in each panel."""
+    widths, batches, coefficients = (
+        sorted({item[key] for item in results}) for key in ("hidden_width", "batch", "coefficients")
+    )
+    devices = {item["device"] for item in results}
+    times = {
+        (item["device"], item["coefficients"], item["hidden_width"], item["batch"], item["implementation"]): item[
+            "median_ms"
+        ]
+        for item in results
+    }
+    figure, axes = plt.subplots(2, len(coefficients), figsize=(9, 7), squeeze=False, layout="constrained")
+    for row, (device, label) in enumerate((("cpu", "CPU"), ("cuda", "GPU"))):
+        for column, size in enumerate(coefficients):
+            axis = axes[row, column]
+            axis.set_box_aspect(len(widths) / len(batches))
+            if device in devices:
+                ratios = np.array(
+                    [
+                        [
+                            times[device, size, width, batch, "TorchCurves"]
+                            / times[device, size, width, batch, "efficient-kan"]
+                            for batch in batches
+                        ]
+                        for width in widths
+                    ]
+                )
+                image = draw_heatmap(axis, ratios, widths, batches)
+            else:
+                axis.text(0.5, 0.5, "Not measured", ha="center", va="center", transform=axis.transAxes)
+                axis.set(xticks=[], yticks=[], frame_on=False)
+            if row == 0:
+                axis.set_title(f"Coefficients K = {size}")
+            if row == 1:
+                axis.set_xlabel("Batch size B")
+            if column == 0:
+                axis.set_ylabel(f"{label}\nHidden width W")
+            else:
+                axis.tick_params(labelleft=False)
+
+    figure.suptitle("KAN training steps · TorchCurves vs EfficientKAN")
+    add_ratio_colorbar(figure, axes, image, "EfficientKAN")
+    return figure
 
 
-def formatted_pair(results: dict, coefficients: int, batch: int, device: str) -> tuple[str, str]:
-    torchcurves = results.get((coefficients, batch, device, "TorchCurves"))
-    baseline = results.get((coefficients, batch, device, "efficient-kan"))
-    if torchcurves is None or baseline is None:
-        return "N/A", "N/A"
-
-    return format_time(torchcurves, baseline), format_time(baseline, torchcurves)
-
-
-def table_rows(results: list[dict]) -> list[tuple[str, ...]]:
-    lookup = {(item["coefficients"], item["batch"], item["device"], item["implementation"]): item for item in results}
-    rows = []
-    for coefficients, batch in product((8, 32), (64, 256, 1024)):
-        rows.append(
-            (
-                str(coefficients),
-                str(batch),
-                *formatted_pair(lookup, coefficients, batch, "cpu"),
-                *formatted_pair(lookup, coefficients, batch, "cuda"),
-            )
-        )
-    return rows
-
-
-def table_caption(metadata: dict, example: dict) -> str:
+def kan_caption(metadata: dict, example: dict) -> str:
     return (
-        "Median milliseconds per training step for idiomatic [32, 64, 64, 1] cubic KANs; "
+        "Training-step time ratios for idiomatic [32, W, W, 1] cubic KANs. Panel rows show CPU and GPU; "
+        "panel columns show coefficient count K. Within each panel, rows show hidden width W and columns show "
+        "batch size B. Each cell is median TorchCurves time divided by median EfficientKAN time, rounded to "
+        "two significant digits; below 1 means TorchCurves is faster. The shared logarithmic color scale spans "
+        "0.01–100, centered at 1; ratios beyond the limits use endpoint colors. "
         f"5 blocks of {example['steps_per_block']} steps after {example['warmup_steps']} warm-up steps. "
-        "TorchCurves uses BSplineCurve/Sum layers with clamping and repeated boundary knots. "
+        "TorchCurves uses BSplineCurve/Sum layers with the default rational input map and repeated boundary knots. "
         "EfficientKAN uses its KAN model with SiLU branches, trainable spline scaling, "
         "extended knots, and no added clamp. "
         "Each library initializes its own parameters. Architectures and parameter counts differ. "
         "Both use the same generated data, MSE, and Adam with fixed grids. Float32 eager execution; one CPU thread. "
         f"CPU: {metadata['cpu']}; GPU: {metadata['gpu'] or 'N/A (CUDA unavailable)'}. "
-        "Bold indicates non-overlapping interquartile intervals. Lower is better. "
         "These timings describe step cost, not predictive quality or convergence."
     )
 
 
-def latex_cell(value: str) -> str:
-    return r"\textbf{" + value.strip("*") + "}" if value.startswith("**") else value
-
-
-def write_table(results: list[dict], metadata: dict, directory: Path) -> None:
-    rows = table_rows(results)
-    caption = table_caption(metadata, results[0])
-    markdown = ["| " + " | ".join(HEADER) + " |", "|" + " --- |" * len(HEADER)]
-    markdown.extend("| " + " | ".join(row) + " |" for row in rows)
-    (directory / "kan_table.md").write_text("\n".join(markdown) + "\n\n" + caption + "\n")
-
-    line_break = r" \\"
-    latex = [r"\begin{tabular}{rrrrrr}", r"\hline", " & ".join(HEADER) + line_break, r"\hline"]
-    latex.extend(" & ".join(latex_cell(value) for value in row) + line_break for row in rows)
-    latex.extend((r"\hline", r"\end{tabular}", "% " + caption))
-    (directory / "kan_table.tex").write_text("\n".join(latex) + "\n")
+def plot_kan(results: list[dict], metadata: dict, directory: Path) -> None:
+    save_figure(kan_figure(results), directory, "kan", kan_caption(metadata, results[0]))
 
 
 def curve_caption(family: str) -> str:
@@ -179,4 +190,4 @@ def render(directory: Path) -> None:
     kan = json.loads((directory / "kan_summary.json").read_text())
     metadata = json.loads((directory / "metadata.json").read_text())
     plot_curves(curves, directory)
-    write_table(kan, metadata, directory)
+    plot_kan(kan, metadata, directory)

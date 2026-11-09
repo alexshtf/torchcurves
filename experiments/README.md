@@ -10,15 +10,15 @@ From this directory, run the tests and full study with:
 make run
 ```
 
-`make render` regenerates the figures and tables from saved measurements.
+`make render` regenerates the figures from saved measurements.
 
 The tests cover evaluator values, KAN training and Adam updates,
 restoration of training blocks, heatmap ratios and layout, and result exports.
 `full` runs every specified configuration and writes raw
-measurements, summaries, metadata, the curve figures, and the KAN table to
-`results/full/`. `render` rebuilds the figures and tables from saved summaries.
+measurements, summaries, metadata, and the three heatmap figures to
+`results/full/`. `render` rebuilds the figures from saved summaries.
 The full run can take a long time, especially the larger KAN configurations.
-CUDA results are marked unavailable when no CUDA device is accessible.
+GPU panels are marked "Not measured" when no CUDA device is accessible.
 
 The curve study measures the Cartesian product of four dimensions for each family:
 
@@ -50,14 +50,24 @@ output dimension and coefficient count.
 
 The KAN study compares each library's idiomatic construction:
 
-- TorchCurves: the README's `BSplineCurve`/`Sum` network with `real.clamp`.
+- TorchCurves: a `BSplineCurve`/`Sum` network with the default `real.rational` input map.
 - EfficientKAN: upstream `KAN`, using its default branches, scaling,
   initialization, and extended knots, with no additional input clamp.
 
-Both use widths `[32, 64, 64, 1]`, cubic splines, and 8 or 32 coefficients per
-spline (`grid_size=coefficients-3` for EfficientKAN). The architectures,
+Both use widths `[32, W, W, 1]` and cubic splines. The grid covers all combinations
+of batch size B = 64, 256, 1024; hidden width W = 32, 64, 128; and coefficients
+per spline K = 8, 32, 64 (`grid_size=K-3` for EfficientKAN). This gives 27
+configurations per device, or 54 with both CPU and CUDA. Input/output dimensions
+and the three-layer depth stay fixed. The architectures,
 initial parameters, knot vectors, and parameter counts intentionally differ.
-Parameter counts are recorded alongside the timings.
+Hidden widths and parameter counts are recorded alongside the timings.
+
+`kan.pdf` and `kan.png` show CPU/GPU as panel rows and coefficient counts as panel
+columns. Within each panel, rows show hidden width and columns show batch size.
+Each number is median TorchCurves step time divided by median EfficientKAN step
+time. The heatmap uses the same color scale as the curve figures, with a caption
+in `kan_caption.md`. It replaces the KAN table; absolute timings remain in CSV/JSON.
+Earlier KAN measurements lack the hidden-width field and need to be rerun.
 
 Each step includes forward evaluation, MSE, backward propagation, and Adam.
 Both networks reuse the same generated batch, fixed grids, and Adam options;

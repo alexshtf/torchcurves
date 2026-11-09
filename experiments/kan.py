@@ -2,7 +2,7 @@
 
 import copy
 import time
-from itertools import pairwise
+from itertools import pairwise, product
 
 from common import SEED
 
@@ -13,16 +13,21 @@ from efficient_kan import KAN
 
 import torchcurves as tc
 
-WIDTHS = (32, 64, 64, 1)
+INPUT_WIDTH = 32
+OUTPUT_WIDTH = 1
+HIDDEN_WIDTHS = (32, 64, 128)
+BATCHES = (64, 256, 1024)
+COEFFICIENTS = (8, 32, 64)
 REPEATS = 5
 STEPS = 100
 WARMUP = 50
 
 
-def build_models(coefficients: int, device: str) -> dict[str, torch.nn.Module]:
-    efficient_kan = KAN(list(WIDTHS), grid_size=coefficients - 3, spline_order=3).to(device)
+def build_models(coefficients: int, hidden_width: int, device: str) -> dict[str, torch.nn.Module]:
+    widths = [INPUT_WIDTH, hidden_width, hidden_width, OUTPUT_WIDTH]
+    efficient_kan = KAN(widths, grid_size=coefficients - 3, spline_order=3).to(device)
     layers = []
-    for input_width, output_width in pairwise(WIDTHS):
+    for input_width, output_width in pairwise(widths):
         layers.append(tc.BSplineCurve(input_width, output_width, knots_config=coefficients))
         layers.append(tc.Sum())
     return {"efficient-kan": efficient_kan, "TorchCurves": torch.nn.Sequential(*layers).to(device)}
@@ -80,17 +85,20 @@ def measure_blocks(models, inputs, targets, *, warmup=WARMUP, repeats=REPEATS, s
     return times
 
 
-def measure_configuration(coefficients: int, batch: int, device: str) -> list[tuple[dict, list[float]]]:
-    seed = SEED + batch + coefficients
+def measure_configuration(
+    coefficients: int, hidden_width: int, batch: int, device: str
+) -> list[tuple[dict, list[float]]]:
+    seed = SEED + batch + hidden_width + coefficients
     torch.manual_seed(seed)
-    models = build_models(coefficients, device)
-    inputs = torch.empty(batch, WIDTHS[0], device=device).uniform_(-1, 1)
-    targets = torch.randn(batch, 1, device=device)
+    models = build_models(coefficients, hidden_width, device)
+    inputs = torch.empty(batch, INPUT_WIDTH, device=device).uniform_(-1, 1)
+    targets = torch.randn(batch, OUTPUT_WIDTH, device=device)
     times = measure_blocks(models, inputs, targets)
     measurements = []
     for name, values in times.items():
         config = {
             "coefficients": coefficients,
+            "hidden_width": hidden_width,
             "batch": batch,
             "implementation": name,
             "parameters": sum(parameter.numel() for parameter in models[name].parameters()),
@@ -108,8 +116,6 @@ def measure_configuration(coefficients: int, batch: int, device: str) -> list[tu
 def run() -> list[tuple[dict, list[float]]]:
     measurements = []
     devices = ["cpu"] + (["cuda"] if torch.cuda.is_available() else [])
-    for coefficients in (8, 32):
-        for device in devices:
-            for batch in (64, 256, 1024):
-                measurements.extend(measure_configuration(coefficients, batch, device))
+    for device, coefficients, hidden_width, batch in product(devices, COEFFICIENTS, HIDDEN_WIDTHS, BATCHES):
+        measurements.extend(measure_configuration(coefficients, hidden_width, batch, device))
     return measurements
