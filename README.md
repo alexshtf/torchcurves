@@ -441,12 +441,14 @@ make html
 If you use this package in your research, please cite:
 
 ```bibtex
-@software{torchcurves,
-  author = {Shtoff, Alex},
-  title = {torchcurves: Differentiable Parametric Curves in PyTorch},
-  year = {2025},
-  publisher = {GitHub},
-  url = {https://github.com/alexshtf/torchcurves}
+@misc{shtoff2026torchcurvesdifferentiableparametriccurves,
+      title={TorchCurves: Differentiable Parametric Curves}, 
+      author={Alex Shtoff},
+      year={2026},
+      eprint={2611.14516},
+      archivePrefix={arXiv},
+      primaryClass={cs.LG},
+      url={https://arxiv.org/abs/2611.14516}, 
 }
 ```
 
